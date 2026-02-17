@@ -1,0 +1,220 @@
+version: '3.9'
+
+# Enterprise SLM-First Knowledge Copilot - Docker Compose Configuration
+# Consolidated architecture: 3 application services + infrastructure
+
+services:
+  # =============================================================================
+  # Data Infrastructure
+  # =============================================================================
+
+  postgres:
+    image: postgres:16
+    container_name: slm-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-slm_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-slm_password}
+      POSTGRES_DB: ${POSTGRES_DB:-slm_knowledge}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-slm_user}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - slm-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: slm-redis
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    networks:
+      - slm-network
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: slm-qdrant
+    ports:
+      - "${QDRANT_PORT:-6333}:6333"
+      - "${QDRANT_GRPC_PORT:-6334}:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      QDRANT__SERVICE__GRPC_PORT: 6334
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - slm-network
+
+  # =============================================================================
+  # ML/Inference Services
+  # =============================================================================
+
+  vllm:
+    image: vllm/vllm-openai:latest
+    container_name: slm-vllm
+    ports:
+      - "${VLLM_PORT:-8080}:8000"
+    environment:
+      - MODEL=${VLLM_MODEL:-Qwen/Qwen2.5-1.5B-Instruct}
+      - GPU_MEMORY_UTILIZATION=${VLLM_GPU_MEMORY_UTILIZATION:-0.85}
+      - MAX_MODEL_LEN=${VLLM_MAX_MODEL_LEN:-2048}
+      - VLLM_WORKER_MULTIPROC_METHOD=spawn
+    volumes:
+      - vllm_cache:/root/.cache/vllm
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/v1/models"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - slm-network
+    depends_on:
+      - redis
+
+  # =============================================================================
+  # Application Services (Consolidated: 3 services)
+  # =============================================================================
+
+  api-service:
+    build:
+      context: .
+      dockerfile: services/api/Dockerfile
+    container_name: slm-api-service
+    ports:
+      - "${API_SERVICE_PORT:-8000}:8000"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-slm_user}:${POSTGRES_PASSWORD:-slm_password}@postgres:5432/${POSTGRES_DB:-slm_knowledge}
+      - REDIS_URL=redis://redis:6379/0
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-dev-secret-key-change-in-production}
+      - JWT_ALGORITHM=${JWT_ALGORITHM:-HS256}
+      - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+      - KNOWLEDGE_SERVICE_URL=http://knowledge-service:8000
+      - INFERENCE_SERVICE_URL=http://inference-service:8000
+      - RATE_LIMIT_REQUESTS=${RATE_LIMIT_REQUESTS:-100}
+      - RATE_LIMIT_WINDOW=${RATE_LIMIT_WINDOW:-60}
+      - CONFIDENCE_THRESHOLD=${CONFIDENCE_THRESHOLD:-0.6}
+      - ENVIRONMENT=development
+    volumes:
+      - .:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      knowledge-service:
+        condition: service_healthy
+      inference-service:
+        condition: service_healthy
+    networks:
+      - slm-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  knowledge-service:
+    build:
+      context: .
+      dockerfile: services/knowledge/Dockerfile
+    container_name: slm-knowledge-service
+    ports:
+      - "${KNOWLEDGE_SERVICE_PORT:-8001}:8000"
+    environment:
+      - QDRANT_URL=http://qdrant:6333
+      - QDRANT_COLLECTION=${QDRANT_COLLECTION:-documents}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-BAAI/bge-small-en-v1.5}
+      - RERANKER_MODEL=${RERANKER_MODEL:-cross-encoder/ms-marco-MiniLM-L-6-v2}
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-slm_user}:${POSTGRES_PASSWORD:-slm_password}@postgres:5432/${POSTGRES_DB:-slm_knowledge}
+      - REDIS_URL=redis://redis:6379/1
+      - CHUNK_SIZE=${CHUNK_SIZE:-512}
+      - CHUNK_OVERLAP=${CHUNK_OVERLAP:-50}
+      - ENVIRONMENT=development
+    volumes:
+      - .:/app
+      - model_cache:/root/.cache
+    depends_on:
+      qdrant:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - slm-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  inference-service:
+    build:
+      context: .
+      dockerfile: services/inference/Dockerfile
+    container_name: slm-inference-service
+    ports:
+      - "${INFERENCE_SERVICE_PORT:-8002}:8000"
+    environment:
+      - VLLM_URL=http://vllm:8000
+      - LLM_MODEL=${LLM_MODEL:-Qwen/Qwen2.5-1.5B-Instruct}
+      - ENVIRONMENT=development
+    volumes:
+      - .:/app
+      - model_cache:/root/.cache
+    depends_on:
+      - vllm
+    networks:
+      - slm-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+# =============================================================================
+# Volumes
+# =============================================================================
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  qdrant_data:
+    driver: local
+  vllm_cache:
+    driver: local
+  model_cache:
+    driver: local
+
+# =============================================================================
+# Networks
+# =============================================================================
+
+networks:
+  slm-network:
+    driver: bridge
