@@ -104,7 +104,7 @@ class TestHealthResponse:
             status="healthy",
             vllm_connected=True,
             model_loaded=True,
-            model_name="Qwen/Qwen2.5-1.5B-Instruct",
+            model_name="abi-commits/qwen-query-optimizer",
             vllm_available=True,
         )
 

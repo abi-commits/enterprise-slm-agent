@@ -86,8 +86,8 @@ class Settings(BaseSettings):
         description="Reranker model name",
     )
     llm_model: str = Field(
-        default="Qwen/Qwen2.5-1.5B-Instruct",
-        description="LLM model name",
+        default="abi-commits/qwen-query-optimizer",
+        description="LLM model name (fine-tuned Qwen2.5-1.5B for query optimization)",
     )
     
     # vLLM Configuration

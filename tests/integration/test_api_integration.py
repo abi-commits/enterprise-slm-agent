@@ -99,7 +99,7 @@ class TestAPIServiceIntegration:
         settings = test_settings
         assert settings.embedding_model == "BAAI/bge-small-en-v1.5"
         assert settings.reranker_model == "cross-encoder/ms-marco-MiniLM-L-6-v2"
-        assert settings.llm_model == "Qwen/Qwen2.5-1.5B-Instruct"
+        assert settings.llm_model == "abi-commits/qwen-query-optimizer"
     
     @pytest.mark.asyncio
     async def test_service_client_initialization(self):

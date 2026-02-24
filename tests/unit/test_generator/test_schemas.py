@@ -121,7 +121,7 @@ class TestGenerateResponse:
             answer="The vacation policy allows 15 days per year.",
             tokens_used=150,
             cost_usd=0.001,
-            model_used="Qwen/Qwen2.5-1.5B-Instruct",
+            model_used="abi-commits/qwen-query-optimizer",
             processing_time_ms=500.0,
             token_usage=TokenUsage(
                 prompt_tokens=100,

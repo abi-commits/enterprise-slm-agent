@@ -196,7 +196,7 @@ def mock_settings() -> MagicMock:
     settings.qdrant_collection = "documents"
     settings.embedding_model = "BAAI/bge-small-en-v1.5"
     settings.reranker_model = "cross-encoder/ms-marco-MiniLM-L-6-v2"
-    settings.llm_model = "Qwen/Qwen2.5-1.5B-Instruct"
+    settings.llm_model = "abi-commits/qwen-query-optimizer"
     settings.vllm_url = "http://localhost:8000"
     settings.confidence_threshold = 0.6
     settings.cache_embedding_ttl = 86400

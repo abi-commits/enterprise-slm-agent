@@ -65,17 +65,17 @@ slm_first/
 - **Environment Management:** uv / Poetry
 
 ### AI & Models (SLM-First)
-- **Query Optimizer:** Qwen-2.5 (1.5B or 7B) - served via vLLM
+- **Query Optimizer:** Fine-tuned Qwen2.5-1.5B (`abi-commits/qwen-query-optimizer`) - served via vLLM
 - **Embeddings:** BAAI/bge-small-en-v1.5
 - **Reranker:** cross-encoder/ms-marco-MiniLM-L-6-v2
-- **Generator (Fallback):** Qwen-2.5-14B or external LLM API
+- **Generator:** Fine-tuned Qwen2.5-1.5B (`abi-commits/qwen-query-optimizer`)
 - **Inference Engine:** vLLM
 
 ### Data Infrastructure
 - **Vector Database:** Qdrant
 - **Relational Database:** PostgreSQL 16
 - **State Store:** Redis
-- **Object Storage:** MinIO (S3 compatible) or local filesystem
+
 
 ### Security & Operations
 - **Authentication:** OAuth2 with Password Flow + JWT
@@ -170,8 +170,8 @@ INGESTION_SERVICE_URL=http://localhost:8006
 # Model Configuration
 EMBEDDING_MODEL=BAAI/bge-small-en-v1.5
 RERANKER_MODEL=cross-encoder/ms-marco-MiniLM-L-6-v2
-SLM_MODEL=qwen/Qwen2.5-1.5B-Instruct
-LLM_MODEL=qwen/Qwen2.5-14B-Instruct
+SLM_MODEL=abi-commits/qwen-query-optimizer
+LLM_MODEL=abi-commits/qwen-query-optimizer
 
 # Confidence Thresholds
 OPTIMIZER_CONFIDENCE_THRESHOLD=0.6

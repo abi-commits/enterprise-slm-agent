@@ -71,7 +71,7 @@ services:
     ports:
       - "${VLLM_PORT:-8080}:8000"
     environment:
-      - MODEL=${VLLM_MODEL:-Qwen/Qwen2.5-1.5B-Instruct}
+      - MODEL=${VLLM_MODEL:-abi-commits/qwen-query-optimizer}
       - GPU_MEMORY_UTILIZATION=${VLLM_GPU_MEMORY_UTILIZATION:-0.85}
       - MAX_MODEL_LEN=${VLLM_MAX_MODEL_LEN:-2048}
       - VLLM_WORKER_MULTIPROC_METHOD=spawn
@@ -180,7 +180,7 @@ services:
       - "${INFERENCE_SERVICE_PORT:-8002}:8000"
     environment:
       - VLLM_URL=http://vllm:8000
-      - LLM_MODEL=${LLM_MODEL:-Qwen/Qwen2.5-1.5B-Instruct}
+      - LLM_MODEL=${LLM_MODEL:-abi-commits/qwen-query-optimizer}
       - ENVIRONMENT=development
     volumes:
       - .:/app
