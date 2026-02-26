@@ -7,7 +7,6 @@ across both search and ingestion operations.
 Supports both synchronous and asynchronous document ingestion via Redis Streams.
 """
 
-import logging
 import time
 from contextlib import asynccontextmanager
 
@@ -15,6 +14,13 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from core.config.settings import get_settings
+from core.logging import configure_logging, get_logger
+from core.tracing import (
+    configure_tracing,
+    instrument_fastapi,
+    instrument_http_clients,
+    instrument_cache,
+)
 from services.knowledge.retrieval import embeddings as embedding_service
 from services.knowledge.retrieval import reranker as reranker_service
 from services.knowledge import schemas as knowledge_schemas
@@ -23,12 +29,23 @@ from services.knowledge.routers import search as search_router
 from services.knowledge.routers import documents as documents_router
 from services.knowledge.queue import IngestionQueue, IngestionWorker, get_queue
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+# Configure structured logging
+settings = get_settings()
+configure_logging(
+    log_level=settings.log_level,
+    json_output=settings.environment != "development",
+    service_name="knowledge-service",
 )
-logger = logging.getLogger(__name__)
+
+# Configure distributed tracing
+configure_tracing(
+    service_name="knowledge-service",
+    otlp_endpoint=settings.otel_exporter_otlp_endpoint,
+    environment=settings.environment,
+    enabled=True,
+)
+
+logger = get_logger(__name__)
 
 # Global worker reference
 _ingestion_worker: IngestionWorker | None = None
@@ -41,7 +58,7 @@ async def lifespan(app: FastAPI):
     settings = get_settings()
 
     # Startup
-    logger.info("Starting Knowledge Service...")
+    logger.info("service_startup", service="knowledge-service")
 
     # Test Qdrant connection
     logger.info("Testing Qdrant connection...")
@@ -121,6 +138,15 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+
+# Instrument FastAPI for distributed tracing
+instrument_fastapi(app)
+
+# Instrument HTTP clients for trace propagation
+instrument_http_clients()
+
+# Instrument cache operations
+instrument_cache()
 
 # Add CORS middleware
 settings = get_settings()

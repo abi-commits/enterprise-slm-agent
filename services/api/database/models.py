@@ -79,3 +79,82 @@ class AuditLog(Base):
     timestamp: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, nullable=False, index=True
     )
+
+
+class Document(Base):
+    """Model for document metadata.
+    
+    Replaces the in-memory _document_store dict from vector_store.py.
+    Tracks documents uploaded to the Knowledge Service.
+    """
+
+    __tablename__ = "documents"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    title: Mapped[str] = mapped_column(String(500), nullable=False)
+    filename: Mapped[str] = mapped_column(String(500), nullable=False)
+    department: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    access_role: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    chunk_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    file_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)  # SHA256
+    upload_user_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, nullable=False, index=True
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+    )
+
+
+class DocumentChunk(Base):
+    """Model for tracking document chunks in Qdrant.
+    
+    Maps Qdrant point IDs to their parent document for efficient
+    deletion and updates.
+    """
+
+    __tablename__ = "document_chunks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    document_id: Mapped[str] = mapped_column(
+        String(36), nullable=False, index=True
+    )
+    chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    point_id: Mapped[str] = mapped_column(String(36), nullable=False, unique=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, nullable=False
+    )
+
+
+class RefreshToken(Base):
+    """Model for JWT refresh tokens.
+    
+    Enables token refresh without re-authentication and supports
+    token revocation for security.
+    
+    Security: Implements reuse detection - if a revoked token is presented,
+    it indicates theft and triggers automatic revocation of ALL user tokens.
+    """
+
+    __tablename__ = "refresh_tokens"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    user_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, nullable=False
+    )
+    revoked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    
+    # Reuse detection fields
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True, index=True
+    )
+    last_used_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True
+    )
+    used_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0
+    )

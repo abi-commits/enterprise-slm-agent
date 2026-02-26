@@ -21,6 +21,7 @@ class LoginResponse(BaseModel):
     """Login response schema."""
 
     access_token: str = Field(..., description="JWT access token")
+    refresh_token: str = Field(..., description="Refresh token for obtaining new access tokens")
     token_type: str = Field(default="bearer", description="Token type")
     user_id: str = Field(..., description="User ID")
     username: str = Field(..., description="Username")
@@ -61,3 +62,30 @@ class CreateUserRequest(BaseModel):
     password: str = Field(..., min_length=8, max_length=100, description="Password")
     full_name: Optional[str] = Field(None, description="Full name")
     role: UserRole = Field(UserRole.OPERATIONS, description="User role")
+
+
+class RefreshTokenRequest(BaseModel):
+    """Refresh token request schema."""
+
+    refresh_token: str = Field(..., description="Refresh token")
+
+
+class RefreshTokenResponse(BaseModel):
+    """Refresh token response schema."""
+
+    access_token: str = Field(..., description="New JWT access token")
+    refresh_token: str = Field(..., description="New refresh token")
+    token_type: str = Field(default="bearer", description="Token type")
+
+
+class LogoutRequest(BaseModel):
+    """Logout request schema."""
+
+    refresh_token: str = Field(..., description="Refresh token to revoke")
+
+
+class LogoutResponse(BaseModel):
+    """Logout response schema."""
+
+    message: str = Field(..., description="Logout confirmation message")
+

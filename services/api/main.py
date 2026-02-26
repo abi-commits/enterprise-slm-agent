@@ -10,7 +10,6 @@ Only two external service dependencies remain:
 - Inference Service (port 8002) for query optimization and answer generation
 """
 
-import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, status
@@ -18,6 +17,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from core.config.settings import get_settings
+from core.logging import configure_logging, get_logger
+from core.tracing import (
+    configure_tracing,
+    instrument_fastapi,
+    instrument_http_clients,
+    instrument_database,
+    instrument_cache,
+)
 from services.api.cache import cache_manager
 from services.api.clients import service_clients
 from services.api.database import db, init_db, close_db
@@ -31,14 +38,23 @@ from services.api.middleware import (
 from services.api.routers import auth_router, audit_router, metrics_router, query_router
 from services.api.routers.metrics import prometheus_app
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-)
-logger = logging.getLogger(__name__)
-
+# Configure structured logging
 settings = get_settings()
+configure_logging(
+    log_level=settings.log_level,
+    json_output=settings.environment != "development",
+    service_name="api-service",
+)
+
+# Configure distributed tracing
+configure_tracing(
+    service_name="api-service",
+    otlp_endpoint=settings.otel_exporter_otlp_endpoint,
+    environment=settings.environment,
+    enabled=True,
+)
+
+logger = get_logger(__name__)
 
 
 @asynccontextmanager
@@ -119,6 +135,18 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+
+# Instrument FastAPI for distributed tracing
+instrument_fastapi(app)
+
+# Instrument HTTP clients for trace propagation
+instrument_http_clients()
+
+# Instrument database operations
+instrument_database()
+
+# Instrument cache operations
+instrument_cache()
 
 # CORS middleware
 app.add_middleware(

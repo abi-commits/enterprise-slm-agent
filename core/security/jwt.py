@@ -1,5 +1,7 @@
 """JWT token creation and verification using python-jose."""
 
+import hashlib
+import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -17,6 +19,7 @@ class TokenData(BaseModel):
     sub: str  # User ID
     role: str  # User role
     exp: Optional[datetime] = None
+    token_type: str = "access"  # "access" or "refresh"
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
@@ -39,7 +42,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
             minutes=settings.access_token_expire_minutes
         )
 
-    to_encode.update({"exp": expire})
+    to_encode.update({"exp": expire, "token_type": "access"})
 
     encoded_jwt = jwt.encode(
         to_encode,
@@ -50,9 +53,27 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     return encoded_jwt
 
 
+def create_refresh_token(user_id: str, expires_delta: Optional[timedelta] = None) -> str:
+    """
+    Create a random refresh token (not a JWT, just a secure random string).
+        
+    Returns:
+        The refresh token string (64 hex characters)
+    """
+    # Generate a secure random token (32 bytes = 64 hex characters)
+    return secrets.token_hex(32)
+
+
+def hash_refresh_token(token: str) -> str:
+    """
+    Hash a refresh token for storage.
+    """
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
 def verify_token(token: str) -> Optional[TokenData]:
     """
-    Verify and decode a JWT token.
+    Verify and decode a JWT access token.
 
     Args:
         token: The JWT token string to verify
@@ -69,11 +90,16 @@ def verify_token(token: str) -> Optional[TokenData]:
 
         sub: Optional[str] = payload.get("sub")
         role: Optional[str] = payload.get("role")
+        token_type: str = payload.get("token_type", "access")
 
         if sub is None or role is None:
             return None
+        
+        # Only accept access tokens here
+        if token_type != "access":
+            return None
 
-        return TokenData(sub=sub, role=role)
+        return TokenData(sub=sub, role=role, token_type=token_type)
     except JWTError:
         return None
 

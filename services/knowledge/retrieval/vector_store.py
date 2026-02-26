@@ -24,9 +24,6 @@ logger = logging.getLogger(__name__)
 # Global client instance (shared singleton)
 _qdrant_client: Optional[QdrantClient] = None
 
-# In-memory document tracking (in production, use a database)
-_document_store: dict[str, dict[str, Any]] = {}
-
 
 def get_qdrant_client() -> QdrantClient:
     """Get or create the Qdrant client instance (singleton)."""
@@ -285,25 +282,38 @@ async def store_document_chunks(
     document_id: str,
     chunks: list[dict[str, Any]],
     title: str,
+    filename: str,
     department: str,
     access_role: str,
+    file_hash: str,
+    upload_user_id: str,
     metadata: Optional[dict[str, Any]] = None,
     collection_name: Optional[str] = None,
 ) -> bool:
-    """Store document chunks in Qdrant with RBAC metadata.
+    """Store document chunks in Qdrant with RBAC metadata and track in database.
 
     Args:
         document_id: Unique document identifier.
         chunks: List of chunk dictionaries with 'text' and 'embedding'.
         title: Document title.
+        filename: Original filename.
         department: Department for RBAC.
         access_role: Access role for RBAC.
+        file_hash: SHA256 hash of file content.
+        upload_user_id: User ID who uploaded the document.
         metadata: Additional metadata.
         collection_name: Name of the collection. Defaults to settings.
 
     Returns:
         True if successful, False otherwise.
     """
+    from services.knowledge.database import (
+        create_document,
+        create_document_chunks,
+        delete_document,
+        get_session,
+    )
+    
     settings = get_settings()
     collection_name = collection_name or settings.qdrant_collection
 
@@ -312,8 +322,10 @@ async def store_document_chunks(
 
         # Create points for each chunk
         points = []
+        point_ids = []
         for i, chunk in enumerate(chunks):
-            point_id = f"{document_id}_chunk_{i}"
+            point_id = str(uuid4())  # Use UUIDs instead of predictable IDs
+            point_ids.append(point_id)
 
             # Build payload with RBAC metadata
             payload = {
@@ -343,28 +355,48 @@ async def store_document_chunks(
             points=points,
         )
 
-        # Store document metadata in PostgreSQL
-        from services.knowledge.database import store_document
-        await store_document(
-            document_id=document_id,
-            title=title,
-            department=department,
-            access_role=access_role,
-            chunk_count=len(chunks),
-            status="completed",
-            metadata=metadata,
-        )
-
-        logger.info(f"Stored {len(chunks)} chunks for document {document_id}")
-        return True
+        # Store document metadata in PostgreSQL with chunk tracking
+        async for session in get_session():
+            try:
+                # Create document record
+                await create_document(
+                    session=session,
+                    document_id=document_id,
+                    title=title,
+                    filename=filename,
+                    department=department,
+                    access_role=access_role,
+                    file_hash=file_hash,
+                    upload_user_id=upload_user_id,
+                    chunk_count=len(chunks),
+                )
+                
+                # Create chunk tracking records
+                await create_document_chunks(
+                    session=session,
+                    document_id=document_id,
+                    point_ids=point_ids,
+                )
+                
+                logger.info(f"Stored {len(chunks)} chunks for document {document_id} in DB and Qdrant")
+                return True
+                
+            except Exception as db_error:
+                # Rollback: Delete from Qdrant if DB insert failed
+                logger.error(f"Database insert failed, rolling back Qdrant upload: {db_error}")
+                try:
+                    client.delete(
+                        collection_name=collection_name,
+                        points_selector=Filter(
+                            must=[HasIdCondition(has_id=point_ids)]
+                        ),
+                    )
+                except Exception as rollback_error:
+                    logger.error(f"Rollback failed: {rollback_error}")
+                raise db_error
 
     except Exception as e:
         logger.error(f"Failed to store document chunks: {e}")
-
-        # Update document status to failed
-        from services.knowledge.database import update_document_status
-        await update_document_status(document_id, "failed", str(e))
-
         return False
 
 
@@ -375,17 +407,34 @@ async def get_document_info(document_id: str) -> Optional[dict[str, Any]]:
         document_id: Document ID to look up.
 
     Returns:
-        Document info if found, None otherwise.
+        Document info dict if found, None otherwise.
     """
-    from services.knowledge.database import get_document_info as db_get_document_info
-    return await db_get_document_info(document_id)
+    from services.knowledge.database import get_document, get_session
+    
+    async for session in get_session():
+        doc = await get_document(session, document_id)
+        if doc:
+            return {
+                "id": doc.id,
+                "title": doc.title,
+                "filename": doc.filename,
+                "department": doc.department,
+                "access_role": doc.access_role,
+                "chunk_count": doc.chunk_count,
+                "file_hash": doc.file_hash,
+                "upload_user_id": doc.upload_user_id,
+                "version": doc.version,
+                "created_at": doc.created_at.isoformat(),
+                "updated_at": doc.updated_at.isoformat(),
+            }
+        return None
 
 
 async def delete_document(
     document_id: str,
     collection_name: Optional[str] = None,
 ) -> int:
-    """Delete a document and its chunks from Qdrant.
+    """Delete a document and its chunks from both Qdrant and database.
 
     Args:
         document_id: Document ID to delete.
@@ -394,33 +443,40 @@ async def delete_document(
     Returns:
         Number of chunks deleted.
     """
-    from services.knowledge.database import delete_document_record, get_document_info
+    from services.knowledge.database import (
+        get_document_point_ids,
+        delete_document as db_delete_document,
+        get_session,
+    )
+    
     settings = get_settings()
     collection_name = collection_name or settings.qdrant_collection
 
     try:
         client = get_qdrant_client()
 
-        # Find all chunks for this document from database
-        doc_info = await get_document_info(document_id)
-        chunk_count = doc_info.get("chunk_count", 0) if doc_info else 0
+        # Get point IDs from database
+        async for session in get_session():
+            point_ids = await get_document_point_ids(session, document_id)
+            
+            if point_ids:
+                # Delete from Qdrant
+                client.delete(
+                    collection_name=collection_name,
+                    points_selector=Filter(
+                        must=[HasIdCondition(has_id=point_ids)]
+                    ),
+                )
 
-        # Build list of point IDs to delete
-        point_ids = [f"{document_id}_chunk_{i}" for i in range(chunk_count)]
-
-        if point_ids:
-            client.delete(
-                collection_name=collection_name,
-                points_selector=Filter(
-                    must=[HasIdCondition(has_id=point_ids)]
-                ),
-            )
-
-        # Remove from database
-        await delete_document_record(document_id)
-
-        logger.info(f"Deleted {len(point_ids)} chunks for document {document_id}")
-        return len(point_ids)
+            # Delete from database (cascades to document_chunks)
+            deleted = await db_delete_document(session, document_id)
+            
+            if deleted:
+                logger.info(f"Deleted {len(point_ids)} chunks for document {document_id}")
+                return len(point_ids)
+            else:
+                logger.warning(f"Document {document_id} not found in database")
+                return 0
 
     except Exception as e:
         logger.error(f"Failed to delete document: {e}")
@@ -444,10 +500,30 @@ async def list_documents(
     Returns:
         List of document info dictionaries.
     """
-    from services.knowledge.database import list_documents as db_list_documents
-    return await db_list_documents(
-        department=department,
-        access_role=access_role,
-        limit=limit,
-        offset=offset
-    )
+    from services.knowledge.database import list_documents as db_list_documents, get_session
+    
+    async for session in get_session():
+        docs = await db_list_documents(
+            session=session,
+            offset=offset,
+            limit=limit,
+            department=department,
+            access_role=access_role,
+        )
+        
+        return [
+            {
+                "id": doc.id,
+                "title": doc.title,
+                "filename": doc.filename,
+                "department": doc.department,
+                "access_role": doc.access_role,
+                "chunk_count": doc.chunk_count,
+                "version": doc.version,
+                "created_at": doc.created_at.isoformat(),
+                "updated_at": doc.updated_at.isoformat(),
+            }
+            for doc in docs
+        ]
+    
+    return []

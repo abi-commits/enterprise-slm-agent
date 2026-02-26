@@ -11,13 +11,13 @@ Endpoints:
 - GET /audit-log/{log_id} - Get specific audit log entry
 """
 
-import logging
 from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from prometheus_client import make_asgi_app
 from sqlalchemy.ext.asyncio import AsyncSession
+import structlog
 
 from services.api.database import (
     AuditLog,
@@ -38,7 +38,7 @@ from services.api.schemas import (
 )
 from services.api import prometheus
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/metrics", tags=["metrics"])
 

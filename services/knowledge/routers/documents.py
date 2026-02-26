@@ -31,6 +31,20 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/documents", tags=["documents"])
 
 
+# Cache manager for invalidation (shared Redis instance)
+_cache_manager = None
+
+
+async def get_cache_manager():
+    """Get or create cache manager instance (lazy initialization)."""
+    global _cache_manager
+    if _cache_manager is None:
+        from services.api.cache import CacheManager
+        _cache_manager = CacheManager()
+        await _cache_manager.connect()
+    return _cache_manager
+
+
 def embed_chunks(chunks: list[dict]) -> list[dict]:
     """Embed document chunks using the shared embedding model.
 
@@ -65,6 +79,7 @@ async def process_document_sync(
     department: str,
     access_role: str,
     metadata: dict[str, Any],
+    upload_user_id: str = "system",  # TODO: Get from auth context
 ) -> dict[str, Any]:
     """Process a document synchronously (shared by sync upload and worker).
     
@@ -76,11 +91,18 @@ async def process_document_sync(
         department: Department for RBAC
         access_role: Access role for RBAC
         metadata: Additional metadata
+        upload_user_id: User ID who uploaded the document
         
     Returns:
         Dict with chunks_created and processing_time_ms
     """
+    from services.knowledge.database import calculate_file_hash
+    
     start_time = time.time()
+    
+    # Calculate file hash for duplicate detection
+    file_hash = calculate_file_hash(file_content)
+    logger.info(f"Processing document {filename} with hash {file_hash}")
     
     # Validate file type
     if not parser.DocumentParser.is_supported(filename):
@@ -108,14 +130,17 @@ async def process_document_sync(
     logger.info(f"Embedding {len(chunks)} chunks")
     chunks = embed_chunks(chunks)
     
-    # Store in Qdrant
-    logger.info(f"Storing document {document_id} in Qdrant")
-    success = vector_store.store_document_chunks(
+    # Store in Qdrant and database
+    logger.info(f"Storing document {document_id} in Qdrant and database")
+    success = await vector_store.store_document_chunks(
         document_id=document_id,
         chunks=chunks,
         title=title,
+        filename=filename,
         department=department,
         access_role=access_role,
+        file_hash=file_hash,
+        upload_user_id=upload_user_id,
         metadata=metadata,
     )
     
@@ -140,16 +165,8 @@ async def upload_document(
 ) -> knowledge_schemas.UploadResponse:
     """Upload and process a new document synchronously.
 
-    The document will be parsed, chunked, embedded, and stored in Qdrant.
-    This endpoint blocks until processing is complete. For large files,
+    The document will be parsed, chunked, embedded, and stored in Qdrant.For large files,
     use the async endpoint: POST /documents/async
-
-    Args:
-        file: The file to upload (PDF, DOCX, TXT, or Markdown).
-        title: Document title.
-        department: Department for RBAC.
-        access_role: Access role for RBAC (default: "all").
-        metadata: Optional JSON string of additional metadata.
 
     Returns:
         UploadResponse with document ID, status, chunks count, and processing time.
@@ -176,6 +193,16 @@ async def upload_document(
             access_role=access_role,
             metadata=metadata_dict,
         )
+        
+        # Invalidate caches for the affected role
+        try:
+            cache = await get_cache_manager()
+            await cache.invalidate_document_caches(
+                document_id=document_id,
+                access_role=access_role,
+            )
+        except Exception as cache_error:
+            logger.warning(f"Failed to invalidate caches: {cache_error}")
         
         return knowledge_schemas.UploadResponse(
             document_id=document_id,
@@ -441,7 +468,7 @@ async def get_document_status(document_id: str) -> knowledge_schemas.DocumentSta
     Returns:
         DocumentStatusResponse with current status information.
     """
-    doc_info = vector_store.get_document_info(document_id)
+    doc_info = await vector_store.get_document_info(document_id)
 
     if not doc_info:
         raise HTTPException(
@@ -450,19 +477,19 @@ async def get_document_status(document_id: str) -> knowledge_schemas.DocumentSta
         )
 
     return knowledge_schemas.DocumentStatusResponse(
-        document_id=doc_info["document_id"],
-        status=doc_info.get("status", "unknown"),
-        chunks=doc_info.get("chunks", 0),
-        created_at=doc_info.get("created_at", datetime.utcnow()),
-        title=doc_info.get("title"),
-        department=doc_info.get("department"),
-        access_role=doc_info.get("access_role"),
-        error_message=doc_info.get("error"),
+        document_id=doc_info["id"],
+        status="completed",  # All persisted documents are completed
+        chunks=doc_info["chunk_count"],
+        created_at=datetime.fromisoformat(doc_info["created_at"]) if isinstance(doc_info["created_at"], str) else doc_info["created_at"],
+        title=doc_info["title"],
+        department=doc_info["department"],
+        access_role=doc_info["access_role"],
+        error_message=None,
     )
 
 
 @router.delete("/{document_id}", response_model=knowledge_schemas.DeleteResponse)
-async def delete_document(document_id: str) -> knowledge_schemas.DeleteResponse:
+async def delete_document_endpoint(document_id: str) -> knowledge_schemas.DeleteResponse:
     """Delete a document and all its chunks.
 
     Args:
@@ -472,15 +499,25 @@ async def delete_document(document_id: str) -> knowledge_schemas.DeleteResponse:
         DeleteResponse with deletion status.
     """
     # Check if document exists
-    doc_info = vector_store.get_document_info(document_id)
+    doc_info = await vector_store.get_document_info(document_id)
     if not doc_info:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Document {document_id} not found",
         )
 
-    # Delete from Qdrant
-    chunks_deleted = vector_store.delete_document(document_id)
+    # Delete from Qdrant and database
+    chunks_deleted = await vector_store.delete_document(document_id)
+    
+    # Invalidate caches for the affected role
+    try:
+        cache = await get_cache_manager()
+        await cache.invalidate_document_caches(
+            document_id=document_id,
+            access_role=doc_info.get("access_role"),
+        )
+    except Exception as cache_error:
+        logger.warning(f"Failed to invalidate caches: {cache_error}")
 
     return knowledge_schemas.DeleteResponse(
         document_id=document_id,
@@ -489,8 +526,305 @@ async def delete_document(document_id: str) -> knowledge_schemas.DeleteResponse:
     )
 
 
+@router.put("/{document_id}", response_model=knowledge_schemas.UploadResponse)
+async def update_document(
+    document_id: str,
+    file: UploadFile = File(...),
+    title: Optional[str] = Form(default=None),
+    department: Optional[str] = Form(default=None),
+    access_role: Optional[str] = Form(default=None),
+    metadata: Optional[str] = Form(default=None),
+) -> knowledge_schemas.UploadResponse:
+    """Update an existing document by re-processing it.
+
+    Returns:
+        UploadResponse with updated document info.
+    """
+    from services.knowledge.database import (
+        get_document,
+        get_document_point_ids,
+        delete_document_chunks,
+        update_document,
+        get_session,
+        calculate_file_hash,
+    )
+    
+    # Check if document exists
+    doc_info = await vector_store.get_document_info(document_id)
+    if not doc_info:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Document {document_id} not found",
+        )
+    
+    # Read file content and calculate hash
+    file_content = await file.read()
+    new_file_hash = calculate_file_hash(file_content)
+    
+    # Check if content has changed
+    if new_file_hash == doc_info["file_hash"]:
+        # File content unchanged - just update metadata if provided
+        if title or department or access_role:
+            async for session in get_session():
+                from services.knowledge.database import update_document_metadata
+                await update_document_metadata(
+                    session=session,
+                    document_id=document_id,
+                    title=title,
+                    department=department,
+                    access_role=access_role,
+                )
+        
+        return knowledge_schemas.UploadResponse(
+            document_id=document_id,
+            status="not_modified",
+            chunks_created=doc_info["chunk_count"],
+            processing_time_ms=0,
+        )
+    
+    # File content has changed - full reprocessing needed
+    # Use existing values if not provided
+    final_title = title or doc_info["title"]
+    final_department = department or doc_info["department"]
+    final_access_role = access_role or doc_info["access_role"]
+    final_filename = file.filename or doc_info["filename"]
+    
+    # Parse metadata
+    metadata_dict = {}
+    if metadata:
+        try:
+            metadata_dict = json.loads(metadata)
+        except json.JSONDecodeError:
+            logger.warning(f"Failed to parse metadata JSON: {metadata}")
+    
+    try:
+        start_time = time.time()
+        
+        # Delete old chunks from Qdrant
+        async for session in get_session():
+            old_point_ids = await get_document_point_ids(session, document_id)
+            
+            if old_point_ids:
+                from qdrant_client.http.models import Filter, HasIdCondition
+                from services.knowledge.retrieval.vector_store import get_qdrant_client
+                from core.config.settings import get_settings
+                
+                settings = get_settings()
+                client = get_qdrant_client()
+                client.delete(
+                    collection_name=settings.qdrant_collection,
+                    points_selector=Filter(
+                        must=[HasIdCondition(has_id=old_point_ids)]
+                    ),
+                )
+                logger.info(f"Deleted {len(old_point_ids)} old chunks for document {document_id}")
+            
+            # Delete old chunk records
+            await delete_document_chunks(session, document_id)
+        
+        # Parse, chunk, and embed new version
+        if not parser.DocumentParser.is_supported(final_filename):
+            raise ValueError(f"Unsupported file format: {final_filename}")
+        
+        text = parser.DocumentParser.parse(file_content, final_filename)
+        if not text or not text.strip():
+            raise ValueError("Document contains no extractable text")
+        
+        chunks = chunker.TextChunker().chunk_text(text, metadata={
+            "document_id": document_id,
+            "title": final_title,
+            "department": final_department,
+        })
+        
+        if not chunks:
+            raise ValueError("Failed to create chunks from document")
+        
+        chunks = embed_chunks(chunks)
+        
+        # Store new chunks (this will update the document record too)
+        success = await vector_store.store_document_chunks(
+            document_id=document_id,
+            chunks=chunks,
+            title=final_title,
+            filename=final_filename,
+            department=final_department,
+            access_role=final_access_role,
+            file_hash=new_file_hash,
+            upload_user_id=doc_info["upload_user_id"],  # Keep original uploader
+            metadata=metadata_dict,
+        )
+        
+        if not success:
+            raise ValueError("Failed to store updated document")
+        
+        processing_time_ms = (time.time() - start_time) * 1000
+        
+        # Update document record with new version
+        async for session in get_session():
+            await update_document(
+                session=session,
+                document_id=document_id,
+                file_hash=new_file_hash,
+                chunk_count=len(chunks),
+            )
+        
+        # Invalidate caches for the affected role(s)
+        try:
+            cache = await get_cache_manager()
+            await cache.invalidate_document_caches(
+                document_id=document_id,
+                access_role=final_access_role,
+            )
+            # If role changed, also invalidate old role's caches
+            if final_access_role != doc_info["access_role"]:
+                await cache.invalidate_role_caches(doc_info["access_role"])
+        except Exception as cache_error:
+            logger.warning(f"Failed to invalidate caches: {cache_error}")
+        
+        return knowledge_schemas.UploadResponse(
+            document_id=document_id,
+            status="updated",
+            chunks_created=len(chunks),
+            processing_time_ms=processing_time_ms,
+        )
+        
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
+    except Exception as e:
+        logger.error(f"Failed to update document: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update document: {str(e)}",
+        )
+
+
+@router.patch("/{document_id}/metadata")
+async def update_document_metadata_endpoint(
+    document_id: str,
+    title: Optional[str] = None,
+    department: Optional[str] = None,
+    access_role: Optional[str] = None,
+) -> dict[str, Any]:
+    """Update document metadata without re-processing.
+
+    Updates only the metadata fields (title, department, access_role) in both
+    the database and Qdrant payloads, without re-parsing or re-embedding the document.
+
+    Args:
+        document_id: The document ID to update.
+        title: New document title (optional).
+        department: New department for RBAC (optional).
+        access_role: New access role for RBAC (optional).
+
+    Returns:
+        Updated document info.
+    """
+    from services.knowledge.database import (
+        get_document,
+        get_document_point_ids,
+        update_document_metadata as db_update_metadata,
+        get_session,
+    )
+    from services.knowledge.retrieval.vector_store import get_qdrant_client
+    from core.config.settings import get_settings
+    
+    # Check if document exists
+    doc_info = await vector_store.get_document_info(document_id)
+    if not doc_info:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Document {document_id} not found",
+        )
+    
+    # At least one field must be provided
+    if not any([title, department, access_role]):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="At least one field (title, department, access_role) must be provided",
+        )
+    
+    try:
+        # Update in database
+        async for session in get_session():
+            updated_doc = await db_update_metadata(
+                session=session,
+                document_id=document_id,
+                title=title,
+                department=department,
+                access_role=access_role,
+            )
+            
+            if not updated_doc:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Document {document_id} not found",
+                )
+            
+            # Update Qdrant payloads for all chunks
+            point_ids = await get_document_point_ids(session, document_id)
+            
+            if point_ids:
+                settings = get_settings()
+                client = get_qdrant_client()
+                
+                # Build payload updates
+                payload_updates = {}
+                if title:
+                    payload_updates["title"] = title
+                if department:
+                    payload_updates["department"] = department
+                if access_role:
+                    payload_updates["access_roles"] = [access_role, "all"]
+                
+                # Update each point's payload
+                for point_id in point_ids:
+                    client.set_payload(
+                        collection_name=settings.qdrant_collection,
+                        payload=payload_updates,
+                        points=[point_id],
+                    )
+                
+                logger.info(f"Updated metadata for {len(point_ids)} chunks of document {document_id}")
+            
+            # Invalidate caches for affected roles
+            try:
+                cache = await get_cache_manager()
+                # Invalidate for new access role
+                if access_role:
+                    await cache.invalidate_role_caches(access_role)
+                    # If role changed, also invalidate old role's caches
+                    if access_role != doc_info["access_role"]:
+                        await cache.invalidate_role_caches(doc_info["access_role"])
+                else:
+                    # If only title/department changed, invalidate current role
+                    await cache.invalidate_role_caches(doc_info["access_role"])
+            except Exception as cache_error:
+                logger.warning(f"Failed to invalidate caches: {cache_error}")
+            
+            return {
+                "document_id": document_id,
+                "status": "metadata_updated",
+                "title": updated_doc.title,
+                "department": updated_doc.department,
+                "access_role": updated_doc.access_role,
+                "version": updated_doc.version,
+            }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update document metadata: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update metadata: {str(e)}",
+        )
+
+
 @router.get("", response_model=knowledge_schemas.DocumentListResponse)
-async def list_documents(
+async def list_documents_endpoint(
     department: Optional[str] = None,
     access_role: Optional[str] = None,
     limit: int = 100,
@@ -507,7 +841,7 @@ async def list_documents(
     Returns:
         DocumentListResponse with list of documents.
     """
-    documents = vector_store.list_documents(
+    documents = await vector_store.list_documents(
         department=department,
         access_role=access_role,
         limit=limit,
@@ -516,13 +850,13 @@ async def list_documents(
 
     doc_items = [
         knowledge_schemas.DocumentListItem(
-            document_id=doc["document_id"],
-            title=doc.get("title", ""),
-            department=doc.get("department", ""),
-            access_role=doc.get("access_role", "all"),
-            chunks=doc.get("chunks", 0),
-            created_at=doc.get("created_at", datetime.utcnow()),
-            status=doc.get("status", "unknown"),
+            document_id=doc["id"],
+            title=doc["title"],
+            department=doc["department"],
+            access_role=doc["access_role"],
+            chunks=doc["chunk_count"],
+            created_at=datetime.fromisoformat(doc["created_at"]) if isinstance(doc["created_at"], str) else doc["created_at"],
+            status="completed",  # All persisted documents are completed
         )
         for doc in documents
     ]

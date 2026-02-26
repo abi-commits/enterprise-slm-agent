@@ -234,7 +234,7 @@ class CacheManager:
 
             if keys:
                 await self._redis.delete(*keys)
-                logger.info(f"Invalidated {len(keys)} search cache entries")
+                logger.info(f"Invalidated {len(keys)} search cache entries for role '{user_role or 'all'}'")
         except Exception as e:
             logger.error(f"Error invalidating search cache: {e}")
 
@@ -253,6 +253,110 @@ class CacheManager:
                 logger.info(f"Invalidated {len(keys)} LLM response cache entries")
         except Exception as e:
             logger.error(f"Error invalidating LLM cache: {e}")
+    
+    async def invalidate_embedding_cache(self) -> None:
+        """Invalidate all embedding caches."""
+        if not self._redis:
+            return
+
+        try:
+            keys = []
+            async for key in self._redis.scan_iter(match="embedding:*"):
+                keys.append(key)
+
+            if keys:
+                await self._redis.delete(*keys)
+                logger.info(f"Invalidated {len(keys)} embedding cache entries")
+        except Exception as e:
+            logger.error(f"Error invalidating embedding cache: {e}")
+    
+    async def invalidate_document_caches(
+        self,
+        document_id: Optional[str] = None,
+        access_role: Optional[str] = None,
+    ) -> None:
+        """
+        Invalidate all caches related to a document.
+        
+        When a document is added, updated, or deleted, we need to invalidate:
+        - Search caches for the affected role(s)
+        - Embedding caches (as documents may affect query embeddings)
+        - LLM response caches (as context may have changed)
+        
+        Args:
+            document_id: The document ID (currently unused, for future fine-grained invalidation)
+            access_role: The access role of the document to invalidate caches for
+        """
+        if not self._redis:
+            return
+        
+        try:
+            invalidated_count = 0
+            
+            # Invalidate search caches for the affected role
+            if access_role:
+                await self.invalidate_search_cache(user_role=access_role)
+                # Also invalidate admin caches (admins can see everything)
+                await self.invalidate_search_cache(user_role="admin")
+                invalidated_count += 1
+            else:
+                # If no specific role, invalidate all search caches
+                await self.invalidate_search_cache()
+            
+            # Invalidate embedding caches (documents affect embeddings)
+            await self.invalidate_embedding_cache()
+            
+            # Invalidate LLM response caches (context has changed)
+            await self.invalidate_llm_cache()
+            
+            logger.info(
+                f"Invalidated all caches for document {document_id or 'unknown'} "
+                f"(role: {access_role or 'all'})"
+            )
+            
+        except Exception as e:
+            logger.error(f"Error invalidating document caches: {e}")
+    
+    async def invalidate_role_caches(self, role: str) -> None:
+        """
+        Invalidate all caches for a specific role.
+        
+        Used when role permissions or documents accessible to a role change.
+        
+        Args:
+            role: The user role to invalidate caches for
+        """
+        if not self._redis:
+            return
+        
+        try:
+            # Invalidate search caches for the role
+            await self.invalidate_search_cache(user_role=role)
+            
+            logger.info(f"Invalidated all caches for role '{role}'")
+            
+        except Exception as e:
+            logger.error(f"Error invalidating role caches: {e}")
+    
+    async def clear_all_caches(self) -> None:
+        """
+        Clear ALL caches (emergency purge).
+        
+        Use with caution - this will invalidate all cached data.
+        """
+        if not self._redis:
+            return
+        
+        try:
+            # Invalidate all cache types
+            await self.invalidate_search_cache()
+            await self.invalidate_llm_cache()
+            await self.invalidate_embedding_cache()
+            
+            logger.warning("Cleared ALL caches (emergency purge)")
+            
+        except Exception as e:
+            logger.error(f"Error clearing all caches: {e}")
 
 
 # Global cache manager instance

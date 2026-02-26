@@ -7,8 +7,6 @@ and provides LLM-based answer generation with template fallback.
 The service shares a single vLLM client between the optimizer and generator.
 """
 
-import logging
-import sys
 import time
 from contextlib import asynccontextmanager
 
@@ -17,6 +15,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from core.config.settings import get_settings
+from core.logging import configure_logging, get_logger
+from core.tracing import (
+    configure_tracing,
+    instrument_fastapi,
+    instrument_http_clients,
+)
 
 from services.inference.generator import llm_client as llm_module
 from services.inference.optimizer.model import get_model
@@ -24,27 +28,36 @@ from services.inference.routers import generate as generate_router
 from services.inference.routers import optimize as optimize_router
 from services.inference.schemas import HealthResponse
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[
-        logging.StreamHandler(sys.stdout)
-    ],
+# Configure structured logging
+settings = get_settings()
+configure_logging(
+    log_level=settings.log_level,
+    json_output=settings.environment != "development",
+    service_name="inference-service",
 )
 
-logger = logging.getLogger(__name__)
-settings = get_settings()
+# Configure distributed tracing
+configure_tracing(
+    service_name="inference-service",
+    otlp_endpoint=settings.otel_exporter_otlp_endpoint,
+    environment=settings.environment,
+    enabled=True,
+)
+
+logger = get_logger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager - handles startup and shutdown."""
     # Startup
-    logger.info("Starting Inference Service...")
-    logger.info(f"vLLM URL: {settings.vllm_url}")
-    logger.info(f"Use vLLM: {settings.use_vllm}")
-    logger.info(f"Model: {settings.llm_model}")
+    logger.info(
+        "service_startup",
+        service="inference-service",
+        vllm_url=settings.vllm_url,
+        use_vllm=settings.use_vllm,
+        model=settings.llm_model,
+    )
 
     # Initialize query optimizer model (lazy loading)
     try:
@@ -97,6 +110,12 @@ app = FastAPI(
     redoc_url="/redoc",
     openapi_url="/openapi.json",
 )
+
+# Instrument FastAPI for distributed tracing
+instrument_fastapi(app)
+
+# Instrument HTTP clients for trace propagation
+instrument_http_clients()
 
 # Add CORS middleware
 app.add_middleware(

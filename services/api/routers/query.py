@@ -9,13 +9,13 @@ Adapted from services/gateway/routers/query.py with key changes:
   prometheus functions (no HTTP call to metrics service)
 """
 
-import logging
 import time
 import uuid
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
+import structlog
 
 from core.config.settings import get_settings
 from services.api.cache import CacheManager, get_cache
@@ -36,7 +36,7 @@ from services.api.schemas import (
 )
 from services.api import prometheus
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 settings = get_settings()
 
