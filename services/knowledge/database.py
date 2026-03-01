@@ -5,9 +5,9 @@ the in-memory document store that was lost on service restart.
 """
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from sqlalchemy import JSON, DateTime, Integer, String, Text, select, delete
+from sqlalchemy import JSON, DateTime, Integer, String, Text, delete, select
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -33,8 +33,8 @@ class DocumentRecord(Base):
     access_role: Mapped[str] = mapped_column(String(50), nullable=False)
     chunk_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="pending")
-    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    metadata_json: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    metadata_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, nullable=False
     )
@@ -64,8 +64,8 @@ async def store_document(
     access_role: str,
     chunk_count: int = 0,
     status: str = "completed",
-    metadata: Optional[Dict[str, Any]] = None,
-    error_message: Optional[str] = None,
+    metadata: dict[str, Any] | None = None,
+    error_message: str | None = None,
 ) -> bool:
     """Store document metadata in the database.
 
@@ -103,7 +103,7 @@ async def store_document(
         return False
 
 
-async def get_document_info(document_id: str) -> Optional[Dict[str, Any]]:
+async def get_document_info(document_id: str) -> dict[str, Any] | None:
     """Get document information from the database.
 
     Args:
@@ -142,7 +142,7 @@ async def get_document_info(document_id: str) -> Optional[Dict[str, Any]]:
 async def update_document_status(
     document_id: str,
     status: str,
-    error_message: Optional[str] = None,
+    error_message: str | None = None,
 ) -> bool:
     """Update document status.
 
@@ -197,11 +197,11 @@ async def delete_document_record(document_id: str) -> bool:
 
 
 async def list_documents(
-    department: Optional[str] = None,
-    access_role: Optional[str] = None,
+    department: str | None = None,
+    access_role: str | None = None,
     limit: int = 100,
     offset: int = 0,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """List documents from the database.
 
     Args:

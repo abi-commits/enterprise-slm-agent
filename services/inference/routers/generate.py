@@ -12,7 +12,7 @@ import logging
 import time
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 
 from core.config.settings import get_settings
@@ -70,7 +70,7 @@ def generate_template_based(
 
     for doc in documents:
         content = doc.get("content", "")
-        score = doc.get("score", 0.5)
+        doc.get("score", 0.5)
 
         # Simple keyword matching
         content_lower = content.lower()
@@ -227,7 +227,7 @@ async def generate_answer_stream(request: StreamingGenerateRequest) -> Streaming
 
     Tokens are streamed as they're generated, providing better UX for
     long responses. The client should handle SSE format:
-    
+
     ```
     data: {"token": "Hello", "is_final": false}
     data: {"token": " world", "is_final": false}
@@ -244,7 +244,7 @@ async def generate_answer_stream(request: StreamingGenerateRequest) -> Streaming
         f"Starting streaming generation for query: '{request.query[:100]}...', "
         f"documents={len(request.context_documents)}"
     )
-    
+
     async def generate_sse():
         """Generator that yields SSE-formatted chunks."""
         try:
@@ -255,10 +255,10 @@ async def generate_answer_stream(request: StreamingGenerateRequest) -> Streaming
                 user_role=request.user_role,
                 include_few_shot=False,
             )
-            
+
             # Get LLM client
             llm = llm_module.get_llm_client()
-            
+
             # Stream tokens
             async for chunk in llm.generate_stream(
                 prompt=prompt,
@@ -268,10 +268,10 @@ async def generate_answer_stream(request: StreamingGenerateRequest) -> Streaming
             ):
                 # Format as SSE
                 yield f"data: {chunk.to_sse_data()}\n\n"
-                
+
                 if chunk.is_final:
                     break
-                    
+
         except Exception as e:
             logger.error(f"Streaming generation error: {e}")
             error_chunk = StreamChunk(
@@ -280,7 +280,7 @@ async def generate_answer_stream(request: StreamingGenerateRequest) -> Streaming
                 finish_reason="error",
             )
             yield f"data: {error_chunk.model_dump_json()}\n\n"
-    
+
     return StreamingResponse(
         generate_sse(),
         media_type="text/event-stream",

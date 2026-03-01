@@ -5,19 +5,18 @@ the unified SQLAlchemy async session pattern.
 
 """
 
-from typing import Optional
 
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.models.user import UserInDB, UserRole
 from services.api.database.models import User
-from services.api.database.session import db_manager, get_db_session
+from services.api.database.session import db_manager
 
 
 class Database:
     """Async database manager for user authentication queries.
-    
+
     Uses SQLAlchemy async sessions from the shared DatabaseManager.
     """
 
@@ -30,10 +29,10 @@ class Database:
         await db_manager.disconnect()
 
     async def get_user_by_username(
-        self, 
-        username: str, 
-        session: Optional[AsyncSession] = None
-    ) -> Optional[UserInDB]:
+        self,
+        username: str,
+        session: AsyncSession | None = None
+    ) -> UserInDB | None:
         """
         Get a user by username or email.
 
@@ -44,17 +43,17 @@ class Database:
         Returns:
             UserInDB if found, None otherwise
         """
-        async def _query(s: AsyncSession) -> Optional[UserInDB]:
+        async def _query(s: AsyncSession) -> UserInDB | None:
             result = await s.execute(
                 select(User).where(
                     or_(User.username == username, User.email == username)
                 )
             )
             row = result.scalar_one_or_none()
-            
+
             if row is None:
                 return None
-            
+
             return UserInDB(
                 id=row.id,
                 email=row.email,
@@ -66,18 +65,18 @@ class Database:
                 created_at=row.created_at,
                 updated_at=row.updated_at,
             )
-        
+
         if session:
             return await _query(session)
-        
+
         async with db_manager.session() as s:
             return await _query(s)
 
     async def get_user_by_id(
-        self, 
+        self,
         user_id: str,
-        session: Optional[AsyncSession] = None
-    ) -> Optional[UserInDB]:
+        session: AsyncSession | None = None
+    ) -> UserInDB | None:
         """
         Get a user by ID.
 
@@ -88,15 +87,15 @@ class Database:
         Returns:
             UserInDB if found, None otherwise
         """
-        async def _query(s: AsyncSession) -> Optional[UserInDB]:
+        async def _query(s: AsyncSession) -> UserInDB | None:
             result = await s.execute(
                 select(User).where(User.id == user_id)
             )
             row = result.scalar_one_or_none()
-            
+
             if row is None:
                 return None
-            
+
             return UserInDB(
                 id=row.id,
                 email=row.email,
@@ -108,10 +107,10 @@ class Database:
                 created_at=row.created_at,
                 updated_at=row.updated_at,
             )
-        
+
         if session:
             return await _query(session)
-        
+
         async with db_manager.session() as s:
             return await _query(s)
 
@@ -121,9 +120,9 @@ class Database:
         email: str,
         username: str,
         hashed_password: str,
-        full_name: Optional[str],
+        full_name: str | None,
         role: UserRole,
-        session: Optional[AsyncSession] = None,
+        session: AsyncSession | None = None,
     ) -> UserInDB:
         """
         Create a new user.
@@ -153,7 +152,7 @@ class Database:
             s.add(user)
             await s.flush()
             await s.refresh(user)
-            
+
             return UserInDB(
                 id=user.id,
                 email=user.email,
@@ -165,10 +164,10 @@ class Database:
                 created_at=user.created_at,
                 updated_at=user.updated_at,
             )
-        
+
         if session:
             return await _create(session)
-        
+
         async with db_manager.session() as s:
             return await _create(s)
 

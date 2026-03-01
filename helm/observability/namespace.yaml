@@ -1,0 +1,18 @@
+##########################################################################
+# Observability Stack — Namespace
+#
+# All third-party observability components (Prometheus, Grafana, Loki,
+# Tempo, Alertmanager) run in this namespace under PSS baseline.
+# PSS "restricted" is too strict for kube-prometheus-stack components
+# which need access to host paths and node metrics.
+##########################################################################
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+  labels:
+    # baseline: allows host-path access needed by node-exporter and prometheus
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted

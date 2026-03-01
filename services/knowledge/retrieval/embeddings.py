@@ -5,7 +5,6 @@ search (query embedding) and ingestion (document chunk embedding).
 """
 
 import logging
-from typing import Optional
 
 import numpy as np
 import torch
@@ -16,7 +15,7 @@ from core.config.settings import get_settings
 logger = logging.getLogger(__name__)
 
 # Global model instance
-_embedding_model: Optional[SentenceTransformer] = None
+_embedding_model: SentenceTransformer | None = None
 
 
 def get_embedding_model() -> SentenceTransformer:

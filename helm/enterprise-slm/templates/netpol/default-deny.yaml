@@ -1,0 +1,21 @@
+{{- if .Values.networkPolicies.enabled }}
+##########################################################################
+# NetworkPolicy — Default Deny All
+#
+# Blocks all ingress AND egress traffic for every pod in the namespace.
+# Explicit allow rules below carve out the minimum required paths.
+# This follows zero-trust network segmentation principles.
+##########################################################################
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "enterprise-slm.labels" . | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+{{- end }}

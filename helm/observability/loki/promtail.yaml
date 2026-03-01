@@ -1,0 +1,88 @@
+##########################################################################
+# Promtail — Log Shipping Agent Values
+#
+# DaemonSet that collects container logs and ships them to Loki.
+# Install:
+#   helm upgrade --install promtail grafana/promtail \
+#     -f helm/observability/loki/promtail.yaml \
+#     --namespace monitoring --version 6.x \
+#     --wait --timeout 5m
+##########################################################################
+
+config:
+  logLevel: info
+  serverPort: 3101
+  clients:
+    - url: http://loki.monitoring.svc.cluster.local:3100/loki/api/v1/push
+
+  snippets:
+    # Add cluster and namespace labels to all log streams
+    extraRelabelConfigs:
+      - action: replace
+        source_labels:
+          - __meta_kubernetes_pod_label_app_kubernetes_io_component
+        target_label: component
+      - action: replace
+        source_labels:
+          - __meta_kubernetes_pod_label_app_kubernetes_io_instance
+        target_label: release
+      - action: replace
+        replacement: slm-prod
+        target_label: cluster
+
+    # Pipeline stages — parse JSON logs from all SLM services
+    pipelineStages:
+      - cri: {}
+      - match:
+          selector: '{app_kubernetes_io_name="enterprise-slm"}'
+          stages:
+            - json:
+                expressions:
+                  level: level
+                  message: message
+                  service: service
+                  trace_id: trace_id
+                  span_id: span_id
+                  event: event
+            - labels:
+                level:
+                service:
+                event:
+            - structured_metadata:
+                trace_id:
+                span_id:
+
+# Tolerate all node pool taints so Promtail collects logs everywhere
+tolerations:
+  - key: "CriticalAddonsOnly"
+    operator: "Exists"
+    effect: "NoSchedule"
+  - key: "nvidia.com/gpu"
+    operator: "Equal"
+    value: "present"
+    effect: "NoSchedule"
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 200m
+    memory: 256Mi
+
+serviceMonitor:
+  enabled: true
+  namespace: monitoring
+
+securityContext:
+  privileged: false
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+  runAsGroup: 0    # needs group 0 to read /var/log
+  runAsUser: 0     # DaemonSet needs host path access for container logs
+
+podSecurityContext:
+  runAsNonRoot: false   # log collection requires host path read access (root)

@@ -1,0 +1,152 @@
+{{/*
+##########################################################################
+# enterprise-slm — Template Helpers
+##########################################################################
+*/}}
+
+{{/*
+Expand the chart name.
+*/}}
+{{- define "enterprise-slm.name" -}}
+{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
+{{/*
+Create a fully-qualified app name. Truncated to 63 characters.
+*/}}
+{{- define "enterprise-slm.fullname" -}}
+{{- if .Values.fullnameOverride }}
+{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
+{{- else }}
+{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
+{{- end }}
+{{- end }}
+
+{{/*
+Chart label  (name-version)
+*/}}
+{{- define "enterprise-slm.chart" -}}
+{{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
+{{/*
+Common labels — applied to every resource.
+*/}}
+{{- define "enterprise-slm.labels" -}}
+helm.sh/chart: {{ include "enterprise-slm.chart" . }}
+app.kubernetes.io/name: {{ include "enterprise-slm.name" . }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/managed-by: {{ .Release.Service }}
+{{- if .Chart.AppVersion }}
+app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+{{- end }}
+{{- end }}
+
+{{/*
+Selector labels for a named component.
+Usage: {{ include "enterprise-slm.selectorLabels" (dict "name" . "component" "api") }}
+*/}}
+{{- define "enterprise-slm.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "enterprise-slm.name" .name }}
+app.kubernetes.io/instance: {{ .name.Release.Name }}
+app.kubernetes.io/component: {{ .component }}
+{{- end }}
+
+{{/*
+Fully qualified image reference.
+Usage: {{ include "enterprise-slm.image" (dict "acr" .Values.global.acr "repo" .Values.api.image.repository "tag" .Values.global.imageTag) }}
+*/}}
+{{- define "enterprise-slm.image" -}}
+{{- if .acr -}}
+{{- printf "%s/%s:%s" .acr .repo .tag -}}
+{{- else -}}
+{{- printf "%s:%s" .repo .tag -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Pod security context (PSS restricted) — override per component if needed.
+*/}}
+{{- define "enterprise-slm.podSecurityContext" -}}
+runAsNonRoot: {{ .Values.podSecurityContext.runAsNonRoot }}
+runAsUser: {{ .Values.podSecurityContext.runAsUser }}
+runAsGroup: {{ .Values.podSecurityContext.runAsGroup }}
+fsGroup: {{ .Values.podSecurityContext.fsGroup }}
+seccompProfile:
+  type: {{ .Values.podSecurityContext.seccompProfile.type }}
+{{- end }}
+
+{{/*
+Container security context (PSS restricted).
+*/}}
+{{- define "enterprise-slm.containerSecurityContext" -}}
+allowPrivilegeEscalation: {{ .Values.containerSecurityContext.allowPrivilegeEscalation }}
+readOnlyRootFilesystem: {{ .Values.containerSecurityContext.readOnlyRootFilesystem }}
+capabilities:
+  drop:
+{{- range .Values.containerSecurityContext.capabilities.drop }}
+    - {{ . }}
+{{- end }}
+{{- end }}
+
+{{/*
+Topology spread constraints — spread pods across zones AND nodes.
+Usage: {{ include "enterprise-slm.topologySpread" (dict "component" "api") }}
+*/}}
+{{- define "enterprise-slm.topologySpread" -}}
+- maxSkew: 1
+  topologyKey: topology.kubernetes.io/zone
+  whenUnsatisfiable: DoNotSchedule
+  labelSelector:
+    matchLabels:
+      app.kubernetes.io/component: {{ .component }}
+- maxSkew: 1
+  topologyKey: kubernetes.io/hostname
+  whenUnsatisfiable: DoNotSchedule
+  labelSelector:
+    matchLabels:
+      app.kubernetes.io/component: {{ .component }}
+{{- end }}
+
+{{/*
+App pool node selector + tolerations.
+*/}}
+{{- define "enterprise-slm.appNodeSelector" -}}
+nodeSelector:
+  agentpool: apppool
+{{- end }}
+
+{{/*
+GPU pool node selector + tolerations.
+*/}}
+{{- define "enterprise-slm.gpuNodeSelector" -}}
+nodeSelector:
+  agentpool: gpupool
+tolerations:
+  - key: "nvidia.com/gpu"
+    operator: "Equal"
+    value: "present"
+    effect: "NoSchedule"
+{{- end }}
+
+{{/*
+Standard CSI secrets volume definition.
+Usage: {{ include "enterprise-slm.secretsVolume" (dict "secretProviderClass" "slm-api-kv-secrets" "secretName" "slm-api-secrets") }}
+*/}}
+{{- define "enterprise-slm.secretsVolume" -}}
+- name: secrets-store
+  csi:
+    driver: secrets-store.csi.k8s.io
+    readOnly: true
+    volumeAttributes:
+      secretProviderClass: {{ .secretProviderClass }}
+{{- end }}
+
+{{/*
+Standard /tmp emptyDir volume (required for readOnlyRootFilesystem).
+*/}}
+{{- define "enterprise-slm.tmpVolume" -}}
+- name: tmp
+  emptyDir:
+    sizeLimit: 256Mi
+{{- end }}

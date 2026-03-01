@@ -2,10 +2,9 @@
 
 import io
 import logging
-from typing import Optional
 
-from pypdf import PdfReader
 from docx import Document
+from pypdf import PdfReader
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +82,7 @@ class DocumentParser:
 
         except Exception as e:
             logger.error(f"Failed to parse PDF: {e}")
-            raise ValueError(f"Failed to parse PDF: {e}")
+            raise ValueError(f"Failed to parse PDF: {e}") from e
 
     @staticmethod
     def _parse_docx(file_content: bytes) -> str:
@@ -118,7 +117,7 @@ class DocumentParser:
 
         except Exception as e:
             logger.error(f"Failed to parse DOCX: {e}")
-            raise ValueError(f"Failed to parse DOCX: {e}")
+            raise ValueError(f"Failed to parse DOCX: {e}") from e
 
     @staticmethod
     def _parse_text(file_content: bytes) -> str:
@@ -143,7 +142,7 @@ class DocumentParser:
 
         # Fallback: decode with errors replaced
         text = file_content.decode("utf-8", errors="replace")
-        logger.warning(f"Extracted text with replacement characters")
+        logger.warning("Extracted text with replacement characters")
         return text
 
     @staticmethod

@@ -14,17 +14,14 @@ import time
 import uuid
 import zipfile
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
-from fastapi.responses import JSONResponse
 
 from services.knowledge import schemas as knowledge_schemas
-from services.knowledge.ingestion import chunker
-from services.knowledge.retrieval import embeddings
-from services.knowledge.ingestion import parser
-from services.knowledge.retrieval import vector_store
-from services.knowledge.queue import IngestionQueue, IngestionJobStatus, get_queue
+from services.knowledge.ingestion import chunker, parser
+from services.knowledge.queue import get_queue
+from services.knowledge.retrieval import embeddings, vector_store
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +79,7 @@ async def process_document_sync(
     upload_user_id: str = "system",  # TODO: Get from auth context
 ) -> dict[str, Any]:
     """Process a document synchronously (shared by sync upload and worker).
-    
+
     Args:
         document_id: UUID for the document
         filename: Original filename
@@ -92,29 +89,29 @@ async def process_document_sync(
         access_role: Access role for RBAC
         metadata: Additional metadata
         upload_user_id: User ID who uploaded the document
-        
+
     Returns:
         Dict with chunks_created and processing_time_ms
     """
     from services.knowledge.database import calculate_file_hash
-    
+
     start_time = time.time()
-    
+
     # Calculate file hash for duplicate detection
     file_hash = calculate_file_hash(file_content)
     logger.info(f"Processing document {filename} with hash {file_hash}")
-    
+
     # Validate file type
     if not parser.DocumentParser.is_supported(filename):
         raise ValueError(f"Unsupported file format: {filename}")
-    
+
     # Parse document
     logger.info(f"Parsing document: {filename}")
     text = parser.DocumentParser.parse(file_content, filename)
-    
+
     if not text or not text.strip():
         raise ValueError("Document contains no extractable text")
-    
+
     # Chunk text
     logger.info(f"Chunking document ({len(text)} chars)")
     chunks = chunker.TextChunker().chunk_text(text, metadata={
@@ -122,14 +119,14 @@ async def process_document_sync(
         "title": title,
         "department": department,
     })
-    
+
     if not chunks:
         raise ValueError("Failed to create chunks from document")
-    
+
     # Embed chunks using shared embedding model
     logger.info(f"Embedding {len(chunks)} chunks")
     chunks = embed_chunks(chunks)
-    
+
     # Store in Qdrant and database
     logger.info(f"Storing document {document_id} in Qdrant and database")
     success = await vector_store.store_document_chunks(
@@ -143,12 +140,12 @@ async def process_document_sync(
         upload_user_id=upload_user_id,
         metadata=metadata,
     )
-    
+
     if not success:
         raise ValueError("Failed to store document in vector database")
-    
+
     processing_time_ms = (time.time() - start_time) * 1000
-    
+
     return {
         "chunks_created": len(chunks),
         "processing_time_ms": processing_time_ms,
@@ -161,7 +158,7 @@ async def upload_document(
     title: str = Form(...),
     department: str = Form(...),
     access_role: str = Form(default="all"),
-    metadata: Optional[str] = Form(default=None),
+    metadata: str | None = Form(default=None),
 ) -> knowledge_schemas.UploadResponse:
     """Upload and process a new document synchronously.
 
@@ -172,7 +169,7 @@ async def upload_document(
         UploadResponse with document ID, status, chunks count, and processing time.
     """
     document_id = str(uuid.uuid4())
-    
+
     # Parse metadata
     metadata_dict = {}
     if metadata:
@@ -180,10 +177,10 @@ async def upload_document(
             metadata_dict = json.loads(metadata)
         except json.JSONDecodeError:
             logger.warning(f"Failed to parse metadata JSON: {metadata}")
-    
+
     try:
         file_content = await file.read()
-        
+
         result = await process_document_sync(
             document_id=document_id,
             filename=file.filename,
@@ -193,7 +190,7 @@ async def upload_document(
             access_role=access_role,
             metadata=metadata_dict,
         )
-        
+
         # Invalidate caches for the affected role
         try:
             cache = await get_cache_manager()
@@ -203,25 +200,25 @@ async def upload_document(
             )
         except Exception as cache_error:
             logger.warning(f"Failed to invalidate caches: {cache_error}")
-        
+
         return knowledge_schemas.UploadResponse(
             document_id=document_id,
             status="completed",
             chunks_created=result["chunks_created"],
             processing_time_ms=result["processing_time_ms"],
         )
-        
+
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
-        )
+        ) from e
     except Exception as e:
         logger.error(f"Failed to process document: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to process document: {str(e)}",
-        )
+        ) from e
 
 
 @router.post("/async", response_model=knowledge_schemas.AsyncUploadResponse, status_code=status.HTTP_202_ACCEPTED)
@@ -230,7 +227,7 @@ async def upload_document_async(
     title: str = Form(...),
     department: str = Form(...),
     access_role: str = Form(default="all"),
-    metadata: Optional[str] = Form(default=None),
+    metadata: str | None = Form(default=None),
 ) -> knowledge_schemas.AsyncUploadResponse:
     """Upload a document for asynchronous processing.
 
@@ -253,7 +250,7 @@ async def upload_document_async(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Unsupported file format: {file.filename}",
         )
-    
+
     # Parse metadata
     metadata_dict = {}
     if metadata:
@@ -261,10 +258,10 @@ async def upload_document_async(
             metadata_dict = json.loads(metadata)
         except json.JSONDecodeError:
             logger.warning(f"Failed to parse metadata JSON: {metadata}")
-    
+
     try:
         file_content = await file.read()
-        
+
         queue = get_queue()
         job_id = await queue.enqueue(
             filename=file.filename,
@@ -274,23 +271,23 @@ async def upload_document_async(
             access_role=access_role,
             metadata=metadata_dict,
         )
-        
+
         # Get the job to get document_id
         job = await queue.get_job_status(job_id)
-        
+
         return knowledge_schemas.AsyncUploadResponse(
             job_id=job_id,
             document_id=job.document_id if job else "",
             status="pending",
             message="Document queued for processing",
         )
-        
+
     except Exception as e:
         logger.error(f"Failed to queue document: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to queue document: {str(e)}",
-        )
+        ) from e
 
 
 @router.get("/jobs/{job_id}", response_model=knowledge_schemas.JobStatusResponse)
@@ -305,13 +302,13 @@ async def get_job_status(job_id: str) -> knowledge_schemas.JobStatusResponse:
     """
     queue = get_queue()
     job = await queue.get_job_status(job_id)
-    
+
     if not job:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Job {job_id} not found",
         )
-    
+
     return knowledge_schemas.JobStatusResponse(
         job_id=job.job_id,
         document_id=job.document_id,
@@ -334,7 +331,7 @@ async def bulk_upload_documents(
     zip_file: UploadFile = File(None),
     department: str = Form(...),
     access_role: str = Form(default="all"),
-    metadata: Optional[str] = Form(default=None),
+    metadata: str | None = Form(default=None),
 ) -> knowledge_schemas.BulkUploadResponse:
     """Bulk upload multiple documents for async processing.
 
@@ -362,13 +359,13 @@ async def bulk_upload_documents(
             metadata_dict = json.loads(metadata)
         except json.JSONDecodeError:
             logger.warning(f"Failed to parse metadata JSON: {metadata}")
-    
+
     items: list[knowledge_schemas.BulkUploadItem] = []
     queue = get_queue()
-    
+
     # Collect files to process
     files_to_process: list[tuple[str, bytes]] = []
-    
+
     # Handle ZIP file
     if zip_file and zip_file.filename:
         try:
@@ -378,7 +375,7 @@ async def bulk_upload_documents(
                     # Skip directories and hidden files
                     if name.endswith('/') or name.startswith('__') or name.startswith('.'):
                         continue
-                    
+
                     if parser.DocumentParser.is_supported(name):
                         file_content = zf.read(name)
                         files_to_process.append((name, file_content))
@@ -386,14 +383,14 @@ async def bulk_upload_documents(
                         items.append(knowledge_schemas.BulkUploadItem(
                             filename=name,
                             status="failed",
-                            error=f"Unsupported file format",
+                            error="Unsupported file format",
                         ))
-        except zipfile.BadZipFile:
+        except zipfile.BadZipFile as exc:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid ZIP file",
-            )
-    
+            ) from exc
+
     # Handle individual files
     if files:
         for file in files:
@@ -405,22 +402,22 @@ async def bulk_upload_documents(
                     items.append(knowledge_schemas.BulkUploadItem(
                         filename=file.filename,
                         status="failed",
-                        error=f"Unsupported file format",
+                        error="Unsupported file format",
                     ))
-    
+
     if not files_to_process and not items:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="No files provided. Use 'files' for multiple files or 'zip_file' for a ZIP archive.",
         )
-    
+
     # Queue all valid files
     queued_count = 0
     for filename, file_content in files_to_process:
         try:
             # Use filename as title if not provided
             title = filename.rsplit('.', 1)[0]
-            
+
             job_id = await queue.enqueue(
                 filename=filename,
                 file_content=file_content,
@@ -429,9 +426,9 @@ async def bulk_upload_documents(
                 access_role=access_role,
                 metadata=metadata_dict,
             )
-            
+
             job = await queue.get_job_status(job_id)
-            
+
             items.append(knowledge_schemas.BulkUploadItem(
                 filename=filename,
                 job_id=job_id,
@@ -439,7 +436,7 @@ async def bulk_upload_documents(
                 status="queued",
             ))
             queued_count += 1
-            
+
         except Exception as e:
             logger.error(f"Failed to queue {filename}: {e}")
             items.append(knowledge_schemas.BulkUploadItem(
@@ -447,9 +444,9 @@ async def bulk_upload_documents(
                 status="failed",
                 error=str(e),
             ))
-    
+
     failed_count = len(items) - queued_count
-    
+
     return knowledge_schemas.BulkUploadResponse(
         total_files=len(items),
         queued=queued_count,
@@ -508,7 +505,7 @@ async def delete_document_endpoint(document_id: str) -> knowledge_schemas.Delete
 
     # Delete from Qdrant and database
     chunks_deleted = await vector_store.delete_document(document_id)
-    
+
     # Invalidate caches for the affected role
     try:
         cache = await get_cache_manager()
@@ -530,10 +527,10 @@ async def delete_document_endpoint(document_id: str) -> knowledge_schemas.Delete
 async def update_document(
     document_id: str,
     file: UploadFile = File(...),
-    title: Optional[str] = Form(default=None),
-    department: Optional[str] = Form(default=None),
-    access_role: Optional[str] = Form(default=None),
-    metadata: Optional[str] = Form(default=None),
+    title: str | None = Form(default=None),
+    department: str | None = Form(default=None),
+    access_role: str | None = Form(default=None),
+    metadata: str | None = Form(default=None),
 ) -> knowledge_schemas.UploadResponse:
     """Update an existing document by re-processing it.
 
@@ -541,14 +538,13 @@ async def update_document(
         UploadResponse with updated document info.
     """
     from services.knowledge.database import (
-        get_document,
-        get_document_point_ids,
-        delete_document_chunks,
-        update_document,
-        get_session,
         calculate_file_hash,
+        delete_document_chunks,
+        get_document_point_ids,
+        get_session,
+        update_document,
     )
-    
+
     # Check if document exists
     doc_info = await vector_store.get_document_info(document_id)
     if not doc_info:
@@ -556,11 +552,11 @@ async def update_document(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Document {document_id} not found",
         )
-    
+
     # Read file content and calculate hash
     file_content = await file.read()
     new_file_hash = calculate_file_hash(file_content)
-    
+
     # Check if content has changed
     if new_file_hash == doc_info["file_hash"]:
         # File content unchanged - just update metadata if provided
@@ -574,21 +570,21 @@ async def update_document(
                     department=department,
                     access_role=access_role,
                 )
-        
+
         return knowledge_schemas.UploadResponse(
             document_id=document_id,
             status="not_modified",
             chunks_created=doc_info["chunk_count"],
             processing_time_ms=0,
         )
-    
+
     # File content has changed - full reprocessing needed
     # Use existing values if not provided
     final_title = title or doc_info["title"]
     final_department = department or doc_info["department"]
     final_access_role = access_role or doc_info["access_role"]
     final_filename = file.filename or doc_info["filename"]
-    
+
     # Parse metadata
     metadata_dict = {}
     if metadata:
@@ -596,19 +592,20 @@ async def update_document(
             metadata_dict = json.loads(metadata)
         except json.JSONDecodeError:
             logger.warning(f"Failed to parse metadata JSON: {metadata}")
-    
+
     try:
         start_time = time.time()
-        
+
         # Delete old chunks from Qdrant
         async for session in get_session():
             old_point_ids = await get_document_point_ids(session, document_id)
-            
+
             if old_point_ids:
                 from qdrant_client.http.models import Filter, HasIdCondition
-                from services.knowledge.retrieval.vector_store import get_qdrant_client
+
                 from core.config.settings import get_settings
-                
+                from services.knowledge.retrieval.vector_store import get_qdrant_client
+
                 settings = get_settings()
                 client = get_qdrant_client()
                 client.delete(
@@ -618,29 +615,29 @@ async def update_document(
                     ),
                 )
                 logger.info(f"Deleted {len(old_point_ids)} old chunks for document {document_id}")
-            
+
             # Delete old chunk records
             await delete_document_chunks(session, document_id)
-        
+
         # Parse, chunk, and embed new version
         if not parser.DocumentParser.is_supported(final_filename):
             raise ValueError(f"Unsupported file format: {final_filename}")
-        
+
         text = parser.DocumentParser.parse(file_content, final_filename)
         if not text or not text.strip():
             raise ValueError("Document contains no extractable text")
-        
+
         chunks = chunker.TextChunker().chunk_text(text, metadata={
             "document_id": document_id,
             "title": final_title,
             "department": final_department,
         })
-        
+
         if not chunks:
             raise ValueError("Failed to create chunks from document")
-        
+
         chunks = embed_chunks(chunks)
-        
+
         # Store new chunks (this will update the document record too)
         success = await vector_store.store_document_chunks(
             document_id=document_id,
@@ -653,12 +650,12 @@ async def update_document(
             upload_user_id=doc_info["upload_user_id"],  # Keep original uploader
             metadata=metadata_dict,
         )
-        
+
         if not success:
             raise ValueError("Failed to store updated document")
-        
+
         processing_time_ms = (time.time() - start_time) * 1000
-        
+
         # Update document record with new version
         async for session in get_session():
             await update_document(
@@ -667,7 +664,7 @@ async def update_document(
                 file_hash=new_file_hash,
                 chunk_count=len(chunks),
             )
-        
+
         # Invalidate caches for the affected role(s)
         try:
             cache = await get_cache_manager()
@@ -680,33 +677,33 @@ async def update_document(
                 await cache.invalidate_role_caches(doc_info["access_role"])
         except Exception as cache_error:
             logger.warning(f"Failed to invalidate caches: {cache_error}")
-        
+
         return knowledge_schemas.UploadResponse(
             document_id=document_id,
             status="updated",
             chunks_created=len(chunks),
             processing_time_ms=processing_time_ms,
         )
-        
+
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
-        )
+        ) from e
     except Exception as e:
         logger.error(f"Failed to update document: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to update document: {str(e)}",
-        )
+        ) from e
 
 
 @router.patch("/{document_id}/metadata")
 async def update_document_metadata_endpoint(
     document_id: str,
-    title: Optional[str] = None,
-    department: Optional[str] = None,
-    access_role: Optional[str] = None,
+    title: str | None = None,
+    department: str | None = None,
+    access_role: str | None = None,
 ) -> dict[str, Any]:
     """Update document metadata without re-processing.
 
@@ -722,15 +719,16 @@ async def update_document_metadata_endpoint(
     Returns:
         Updated document info.
     """
+    from core.config.settings import get_settings
     from services.knowledge.database import (
-        get_document,
         get_document_point_ids,
-        update_document_metadata as db_update_metadata,
         get_session,
     )
+    from services.knowledge.database import (
+        update_document_metadata as db_update_metadata,
+    )
     from services.knowledge.retrieval.vector_store import get_qdrant_client
-    from core.config.settings import get_settings
-    
+
     # Check if document exists
     doc_info = await vector_store.get_document_info(document_id)
     if not doc_info:
@@ -738,14 +736,14 @@ async def update_document_metadata_endpoint(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Document {document_id} not found",
         )
-    
+
     # At least one field must be provided
     if not any([title, department, access_role]):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="At least one field (title, department, access_role) must be provided",
         )
-    
+
     try:
         # Update in database
         async for session in get_session():
@@ -756,20 +754,20 @@ async def update_document_metadata_endpoint(
                 department=department,
                 access_role=access_role,
             )
-            
+
             if not updated_doc:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail=f"Document {document_id} not found",
                 )
-            
+
             # Update Qdrant payloads for all chunks
             point_ids = await get_document_point_ids(session, document_id)
-            
+
             if point_ids:
                 settings = get_settings()
                 client = get_qdrant_client()
-                
+
                 # Build payload updates
                 payload_updates = {}
                 if title:
@@ -778,7 +776,7 @@ async def update_document_metadata_endpoint(
                     payload_updates["department"] = department
                 if access_role:
                     payload_updates["access_roles"] = [access_role, "all"]
-                
+
                 # Update each point's payload
                 for point_id in point_ids:
                     client.set_payload(
@@ -786,9 +784,9 @@ async def update_document_metadata_endpoint(
                         payload=payload_updates,
                         points=[point_id],
                     )
-                
+
                 logger.info(f"Updated metadata for {len(point_ids)} chunks of document {document_id}")
-            
+
             # Invalidate caches for affected roles
             try:
                 cache = await get_cache_manager()
@@ -803,7 +801,7 @@ async def update_document_metadata_endpoint(
                     await cache.invalidate_role_caches(doc_info["access_role"])
             except Exception as cache_error:
                 logger.warning(f"Failed to invalidate caches: {cache_error}")
-            
+
             return {
                 "document_id": document_id,
                 "status": "metadata_updated",
@@ -812,7 +810,7 @@ async def update_document_metadata_endpoint(
                 "access_role": updated_doc.access_role,
                 "version": updated_doc.version,
             }
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -820,13 +818,13 @@ async def update_document_metadata_endpoint(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to update metadata: {str(e)}",
-        )
+        ) from e
 
 
 @router.get("", response_model=knowledge_schemas.DocumentListResponse)
 async def list_documents_endpoint(
-    department: Optional[str] = None,
-    access_role: Optional[str] = None,
+    department: str | None = None,
+    access_role: str | None = None,
     limit: int = 100,
     offset: int = 0,
 ) -> knowledge_schemas.DocumentListResponse:

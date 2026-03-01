@@ -1,7 +1,6 @@
 """Core configuration settings using Pydantic BaseSettings."""
 
 from functools import lru_cache
-from typing import Optional
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -18,8 +17,8 @@ class Settings(BaseSettings):
     )
 
     # Application Environment
-    environment: str = Field(default="development", description="Application environment")
-    debug: bool = Field(default=True, description="Debug mode")
+    environment: str = Field(default="production", description="Application environment")
+    debug: bool = Field(default=False, description="Debug mode")
     log_level: str = Field(default="INFO", description="Logging level")
 
     # PostgreSQL Configuration
@@ -68,12 +67,27 @@ class Settings(BaseSettings):
 
     # Authentication & Security
     jwt_secret_key: str = Field(
-        default="change-this-to-a-random-secret-key-in-production",
-        description="JWT secret key for signing tokens",
+        ...,
+        description="JWT secret key for signing tokens (required — no default allowed in production)",
     )
     jwt_algorithm: str = Field(default="HS256", description="JWT algorithm")
     access_token_expire_minutes: int = Field(
         default=30, description="Access token expiration in minutes"
+    )
+    refresh_token_expire_days: int = Field(
+        default=7, description="Refresh token expiration in days"
+    )
+
+    # CORS
+    cors_origins: list[str] = Field(
+        default=[],
+        description="Allowed CORS origins (empty list denies all cross-origin requests in production)",
+    )
+
+    # Security Alerting
+    alert_webhook_url: str | None = Field(
+        default=None,
+        description="Webhook URL for security alerts (Slack/Teams incoming webhook)",
     )
 
     # ML Models
@@ -89,7 +103,7 @@ class Settings(BaseSettings):
         default="abi-commits/qwen-query-optimizer",
         description="LLM model name (fine-tuned Qwen2.5-1.5B for query optimization)",
     )
-    
+
     # vLLM Configuration
     vllm_url: str = Field(
         default="http://vllm:8000",
@@ -143,7 +157,7 @@ class Settings(BaseSettings):
     metrics_port: int = Field(default=9090, description="Prometheus metrics port")
 
     # OpenTelemetry
-    otel_exporter_otlp_endpoint: Optional[str] = Field(
+    otel_exporter_otlp_endpoint: str | None = Field(
         default=None,
         description="OpenTelemetry OTLP exporter endpoint",
     )

@@ -1,0 +1,442 @@
+##########################################################################
+# enterprise-slm — Default Helm Values
+#
+# Override these in values-production.yaml or with `--set` flags.
+# Secrets are NEVER stored here; they are injected from Azure Key Vault
+# via the CSI SecretProviderClass mounted as a volume.
+##########################################################################
+
+# Override the chart name used in resource labels/names
+nameOverride: ""
+fullnameOverride: ""
+
+# ---------------------------------------------------------------------------
+# Global — shared across all components
+# ---------------------------------------------------------------------------
+global:
+  # Azure Container Registry login server (e.g. acrslmprod.azurecr.io)
+  acr: ""
+  # Image tag applied to all application images — use a git SHA in CI
+  imageTag: "latest"
+  imagePullPolicy: IfNotPresent
+  environment: "production"
+
+  # Azure Key Vault settings (populated from terraform outputs)
+  keyVault:
+    name: ""        # e.g. kv-slm-prod
+    tenantId: ""    # Azure tenant ID
+
+  # Kubernetes namespace (must match Terraform kubernetes_namespace variable)
+  namespace: "slm-prod"
+
+# ---------------------------------------------------------------------------
+# Pod-level security context (PSS restricted — applied to every pod)
+# ---------------------------------------------------------------------------
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+# Container-level security context (PSS restricted)
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+# ---------------------------------------------------------------------------
+# Node pool targeting
+# ---------------------------------------------------------------------------
+nodePools:
+  app:
+    nodeSelector:
+      agentpool: apppool
+    tolerations: []
+  gpu:
+    nodeSelector:
+      agentpool: gpupool
+    tolerations:
+      - key: "nvidia.com/gpu"
+        operator: "Equal"
+        value: "present"
+        effect: "NoSchedule"
+
+# ---------------------------------------------------------------------------
+# API Service
+# ---------------------------------------------------------------------------
+api:
+  enabled: true
+  image:
+    repository: "slm/api-service"
+  replicaCount: 2
+
+  # Managed Identity client ID — from `terraform output managed_identity_client_ids`
+  managedIdentity:
+    clientId: ""
+
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 8000
+    # Prometheus metrics are on the main port at /metrics/prometheus (no separate server)
+    metricsPort: 8000
+    metricsPath: /metrics/prometheus
+
+  resources:
+    requests:
+      cpu: "250m"
+      memory: "512Mi"
+    limits:
+      cpu: "1000m"
+      memory: "1Gi"
+
+  hpa:
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 65
+
+  pdb:
+    minAvailable: 1
+
+  # Non-secret environment variables only
+  env:
+    KNOWLEDGE_SERVICE_URL: "http://knowledge-service.slm-prod.svc.cluster.local"
+    INFERENCE_SERVICE_URL: "http://inference-service.slm-prod.svc.cluster.local"
+    JWT_ALGORITHM: "HS256"
+    # Distributed tracing — pushes spans to Tempo via OTLP gRPC
+    OTEL_EXPORTER_OTLP_ENDPOINT: "http://tempo.monitoring.svc.cluster.local:4317"
+    OTEL_TRACES_SAMPLER: "parentbased_traceidratio"
+    OTEL_TRACES_SAMPLER_ARG: "0.1"
+    ACCESS_TOKEN_EXPIRE_MINUTES: "30"
+    REFRESH_TOKEN_EXPIRE_DAYS: "7"
+    RATE_LIMIT_REQUESTS: "100"
+    RATE_LIMIT_WINDOW: "60"
+    CONFIDENCE_THRESHOLD: "0.6"
+    LOG_LEVEL: "INFO"
+    UVICORN_WORKERS: "4"
+    # CORS_ORIGINS set in values-production.yaml
+
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: 8000
+    initialDelaySeconds: 30
+    periodSeconds: 15
+    failureThreshold: 3
+
+  readinessProbe:
+    httpGet:
+      path: /health
+      port: 8000
+    initialDelaySeconds: 15
+    periodSeconds: 10
+    failureThreshold: 3
+
+# ---------------------------------------------------------------------------
+# Knowledge Service
+# ---------------------------------------------------------------------------
+knowledge:
+  enabled: true
+  image:
+    repository: "slm/knowledge-service"
+  replicaCount: 2
+
+  managedIdentity:
+    clientId: ""
+
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 8000
+
+  # Higher memory — embedding model (BAAI/bge-small-en-v1.5) loads into RAM
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "2Gi"
+    limits:
+      cpu: "2000m"
+      memory: "4Gi"
+
+  hpa:
+    minReplicas: 2
+    maxReplicas: 4
+    targetCPUUtilizationPercentage: 65
+
+  pdb:
+    minAvailable: 1
+
+  env:
+    QDRANT_URL: "http://qdrant.slm-prod.svc.cluster.local:6333"
+    QDRANT_COLLECTION: "documents"
+    OTEL_EXPORTER_OTLP_ENDPOINT: "http://tempo.monitoring.svc.cluster.local:4317"
+    OTEL_TRACES_SAMPLER: "parentbased_traceidratio"
+    OTEL_TRACES_SAMPLER_ARG: "0.1"
+    EMBEDDING_MODEL: "BAAI/bge-small-en-v1.5"
+    RERANKER_MODEL: "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    CHUNK_SIZE: "512"
+    CHUNK_OVERLAP: "50"
+    LOG_LEVEL: "INFO"
+    UVICORN_WORKERS: "2"
+
+  # Model cache — emptyDir on first deploy; replace with PVC for faster restarts
+  modelCache:
+    enabled: true
+    sizeLimit: "5Gi"
+
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: 8000
+    initialDelaySeconds: 60   # embedding model load takes time
+    periodSeconds: 15
+    failureThreshold: 3
+
+  readinessProbe:
+    httpGet:
+      path: /health
+      port: 8000
+    initialDelaySeconds: 45
+    periodSeconds: 10
+    failureThreshold: 3
+
+# ---------------------------------------------------------------------------
+# Inference Service
+# ---------------------------------------------------------------------------
+inference:
+  enabled: true
+  image:
+    repository: "slm/inference-service"
+  replicaCount: 2
+
+  managedIdentity:
+    clientId: ""
+
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 8000
+
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "1Gi"
+    limits:
+      cpu: "2000m"
+      memory: "2Gi"
+
+  hpa:
+    minReplicas: 2
+    maxReplicas: 4
+    targetCPUUtilizationPercentage: 65
+
+  pdb:
+    minAvailable: 1
+
+  env:
+    VLLM_URL: "http://vllm.slm-prod.svc.cluster.local:8000"
+    LLM_MODEL: "abi-commits/qwen-query-optimizer"
+    USE_VLLM: "true"
+    OTEL_EXPORTER_OTLP_ENDPOINT: "http://tempo.monitoring.svc.cluster.local:4317"
+    OTEL_TRACES_SAMPLER: "parentbased_traceidratio"
+    OTEL_TRACES_SAMPLER_ARG: "0.1"
+    LOG_LEVEL: "INFO"
+    UVICORN_WORKERS: "2"
+
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: 8000
+    initialDelaySeconds: 30
+    periodSeconds: 15
+    failureThreshold: 3
+
+  readinessProbe:
+    httpGet:
+      path: /health
+      port: 8000
+    initialDelaySeconds: 20
+    periodSeconds: 10
+    failureThreshold: 3
+
+# ---------------------------------------------------------------------------
+# Alembic migration Job (Helm pre-upgrade/pre-install hook)
+# ---------------------------------------------------------------------------
+alembic:
+  enabled: true
+  # Reuses the api-service image — alembic is installed there
+  image:
+    repository: "slm/api-service"
+
+  managedIdentity:
+    clientId: ""
+
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+
+  # hook-delete-policy: clean up completed/failed jobs before next hook run
+  hookDeletePolicy: "before-hook-creation,hook-succeeded"
+
+# ---------------------------------------------------------------------------
+# Qdrant Vector Database (StatefulSet)
+# ---------------------------------------------------------------------------
+qdrant:
+  enabled: true
+  image:
+    repository: "qdrant/qdrant"
+    tag: "v1.13.4"
+    pullPolicy: IfNotPresent
+
+  replicaCount: 1     # Single node for initial deploy; 3 for HA cluster
+
+  service:
+    type: ClusterIP
+    restPort: 6333
+    grpcPort: 6334
+
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "1Gi"
+    limits:
+      cpu: "2000m"
+      memory: "4Gi"
+
+  persistence:
+    storageClassName: "managed-premium"
+    size: "50Gi"
+
+  pdb:
+    minAvailable: 1
+
+  # Qdrant runs as root by default — override for PSS restricted
+  securityContext:
+    runAsNonRoot: false    # Qdrant official image runs as root; use dedicated PSS label
+    runAsUser: 0
+
+  # Snapshot backup to Azure Blob Storage via CronJob
+  backup:
+    enabled: true
+    schedule: "0 2 * * *"         # 02:00 UTC daily
+    retentionDays: 7               # prune blobs older than this on each run
+    storageAccountName: "slmbackupsa"      # override in values-production.yaml
+    containerName: "qdrant-snapshots"
+    collection: "documents"
+    # image must supply: curl, azcopy, date, bash
+    image:
+      repository: "mcr.microsoft.com/azure-cli"
+      tag: "2.67.0"
+      pullPolicy: IfNotPresent
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "128Mi"
+      limits:
+        cpu: "500m"
+        memory: "256Mi"
+    # Workload Identity service account (annotated by Terraform module)
+    # Must match the Federated Credential subject: sa-qdrant-backup
+    serviceAccountName: "sa-qdrant-backup"
+    # Azure Managed Identity client ID from: terraform output -json managed_identity_client_ids | jq -r '["qdrant-backup"]'
+    managedIdentityClientId: ""  # REQUIRED: set in values-production.yaml
+
+# ---------------------------------------------------------------------------
+# vLLM (GPU inference — disabled until GPU pool is provisioned)
+# ---------------------------------------------------------------------------
+vllm:
+  enabled: false    # Set to true in values-production.yaml when GPU nodes are ready
+  # runtimeClassName: "nvidia"   # uncomment when NVIDIA RuntimeClass is deployed
+  runtimeClassName: ""
+  image:
+    repository: "vllm/vllm-openai"
+    tag: "v0.6.6"
+    pullPolicy: IfNotPresent
+
+  service:
+    type: ClusterIP
+    port: 8000
+
+  resources:
+    requests:
+      cpu: "2000m"
+      memory: "16Gi"
+      nvidia.com/gpu: "1"
+    limits:
+      cpu: "6000m"
+      memory: "80Gi"
+      nvidia.com/gpu: "1"
+
+  env:
+    MODEL: "abi-commits/qwen-query-optimizer"
+    GPU_MEMORY_UTILIZATION: "0.85"
+    MAX_MODEL_LEN: "2048"
+    VLLM_WORKER_MULTIPROC_METHOD: "spawn"
+
+  persistence:
+    storageClassName: "managed-premium"
+    size: "30Gi"   # model cache
+
+  livenessProbe:
+    httpGet:
+      path: /v1/models
+      port: 8000
+    initialDelaySeconds: 120
+    periodSeconds: 30
+    failureThreshold: 3
+
+# ---------------------------------------------------------------------------
+# NVIDIA GPU Device Plugin (DaemonSet — runs on gpupool nodes)
+# ---------------------------------------------------------------------------
+nvidia:
+  devicePlugin:
+    enabled: true
+    image:
+      repository: "nvcr.io/nvidia/k8s-device-plugin"
+      tag: "v0.17.0"
+      pullPolicy: IfNotPresent
+
+# ---------------------------------------------------------------------------
+# Network Policies
+# ---------------------------------------------------------------------------
+networkPolicies:
+  enabled: true
+
+# ---------------------------------------------------------------------------
+# Namespace-level ResourceQuota
+# ---------------------------------------------------------------------------
+resourceQuota:
+  enabled: true
+  hard:
+    requests.cpu: "16"
+    requests.memory: "32Gi"
+    limits.cpu: "32"
+    limits.memory: "64Gi"
+    pods: "50"
+    services: "20"
+    secrets: "40"
+    configmaps: "20"
+    persistentvolumeclaims: "10"
+
+# ---------------------------------------------------------------------------
+# Namespace-level LimitRange (per-container defaults)
+# ---------------------------------------------------------------------------
+limitRange:
+  enabled: true
+  defaultRequest:
+    cpu: "100m"
+    memory: "128Mi"
+  default:
+    cpu: "500m"
+    memory: "512Mi"
+  max:
+    cpu: "8000m"
+    memory: "16Gi"

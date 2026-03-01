@@ -1,0 +1,108 @@
+{{- if .Values.qdrant.enabled }}
+##########################################################################
+# Qdrant — StatefulSet
+#
+# Security: PSS-restricted compatible (Qdrant v1.x runs as UID 1000).
+#   - readOnlyRootFilesystem=false (Qdrant writes snapshots + config)
+#   - All other PSS restricted controls applied
+#
+# Storage: PVC via volumeClaimTemplates on managed-premium (Azure Premium SSD).
+##########################################################################
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: qdrant
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "enterprise-slm.labels" . | nindent 4 }}
+    app.kubernetes.io/component: qdrant
+spec:
+  serviceName: qdrant-headless
+  replicas: {{ .Values.qdrant.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: qdrant
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  updateStrategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        {{- include "enterprise-slm.labels" . | nindent 8 }}
+        app.kubernetes.io/component: qdrant
+      annotations:
+        checksum/values: {{ .Values.qdrant | toJson | sha256sum }}
+    spec:
+      securityContext:
+        # PSS restricted: UID 1000 (Qdrant v1.x official image supports non-root)
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      nodeSelector:
+        agentpool: apppool
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: qdrant
+          image: "{{ .Values.qdrant.image.repository }}:{{ .Values.qdrant.image.tag }}"
+          imagePullPolicy: {{ .Values.qdrant.image.pullPolicy }}
+          securityContext:
+            # Qdrant writes to /qdrant/snapshots and /qdrant/config — read-write FS required
+            readOnlyRootFilesystem: false
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          ports:
+            - name: rest
+              containerPort: 6333
+              protocol: TCP
+            - name: grpc
+              containerPort: 6334
+              protocol: TCP
+          env:
+            - name: QDRANT__SERVICE__GRPC_PORT
+              value: "6334"
+            - name: QDRANT__STORAGE__STORAGE_PATH
+              value: "/qdrant/storage"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 6333
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 6333
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.qdrant.resources | nindent 12 }}
+          volumeMounts:
+            - name: qdrant-storage
+              mountPath: /qdrant/storage
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 256Mi
+  volumeClaimTemplates:
+    - metadata:
+        name: qdrant-storage
+        labels:
+          {{- include "enterprise-slm.labels" . | nindent 10 }}
+          app.kubernetes.io/component: qdrant
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        storageClassName: {{ .Values.qdrant.persistence.storageClassName | quote }}
+        resources:
+          requests:
+            storage: {{ .Values.qdrant.persistence.size | quote }}
+{{- end }}

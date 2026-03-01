@@ -21,7 +21,6 @@ from core.tracing import (
     instrument_fastapi,
     instrument_http_clients,
 )
-
 from services.inference.generator import llm_client as llm_module
 from services.inference.optimizer.model import get_model
 from services.inference.routers import generate as generate_router

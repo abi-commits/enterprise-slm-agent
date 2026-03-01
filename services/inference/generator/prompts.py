@@ -2,7 +2,6 @@
 
 from typing import Any
 
-
 # System prompt for answer generation
 GENERATOR_SYSTEM_PROMPT = """You are an AI assistant for an Enterprise Knowledge Copilot system.
 Your task is to generate accurate, helpful answers based on the provided context documents.

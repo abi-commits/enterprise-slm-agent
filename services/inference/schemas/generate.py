@@ -1,6 +1,6 @@
 """Pydantic schemas for the Generator."""
 
-from typing import Any, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -24,7 +24,7 @@ class GenerateRequest(BaseModel):
         default=True,
         description="Whether to use LLM for generation (True) or simpler method (False)",
     )
-    conversation_history: Optional[list[dict[str, str]]] = Field(
+    conversation_history: list[dict[str, str]] | None = Field(
         default=None,
         description="Optional conversation history for context",
     )
@@ -77,7 +77,7 @@ class EscalationReason(str):
 
 class StreamingGenerateRequest(BaseModel):
     """Request schema for streaming generate endpoint.
-    
+
     Uses Server-Sent Events (SSE) to stream tokens as they're generated,
     providing better UX for long responses.
     """
@@ -91,7 +91,7 @@ class StreamingGenerateRequest(BaseModel):
     )
     user_role: str = Field(..., description="User role for RBAC and context")
     max_tokens: int = Field(
-        default=1024, 
+        default=1024,
         description="Maximum tokens to generate",
         ge=1,
         le=4096,
@@ -106,7 +106,7 @@ class StreamingGenerateRequest(BaseModel):
 
 class StreamChunk(BaseModel):
     """Schema for a single SSE stream chunk."""
-    
+
     token: str = Field(..., description="Generated token text")
     is_final: bool = Field(default=False, description="Whether this is the final chunk")
-    finish_reason: Optional[str] = Field(None, description="Reason for completion")
+    finish_reason: str | None = Field(None, description="Reason for completion")

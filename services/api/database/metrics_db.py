@@ -5,13 +5,13 @@ log records using the unified SQLAlchemy async session pattern.
 """
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from services.api.database.models import AuditLog, Base, MetricRecord
-from services.api.database.session import db_manager, get_db_session
+from services.api.database.models import AuditLog, MetricRecord
+from services.api.database.session import db_manager
 
 # Re-export session utilities for backwards compatibility
 engine = db_manager.engine
@@ -34,8 +34,8 @@ async def store_metric(
     query_confidence: float,
     branch_taken: str,
     escalation_flag: bool,
-    latency_per_service: Optional[Dict[str, float]] = None,
-    token_usage: Optional[Dict[str, int]] = None,
+    latency_per_service: dict[str, float] | None = None,
+    token_usage: dict[str, int] | None = None,
     response_time_ms: float = 0.0,
 ) -> MetricRecord:
     """Store a metric record."""
@@ -60,10 +60,10 @@ async def store_audit_log(
     user_id: str,
     action: str,
     resource_type: str,
-    resource_id: Optional[str] = None,
-    details: Optional[Dict[str, Any]] = None,
-    ip_address: Optional[str] = None,
-    user_agent: Optional[str] = None,
+    resource_id: str | None = None,
+    details: dict[str, Any] | None = None,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
 ) -> AuditLog:
     """Store an audit log entry."""
     audit_log = AuditLog(
@@ -83,14 +83,14 @@ async def store_audit_log(
 
 async def query_audit_logs(
     session: AsyncSession,
-    user_id: Optional[str] = None,
-    action: Optional[str] = None,
-    resource_type: Optional[str] = None,
-    start_date: Optional[datetime] = None,
-    end_date: Optional[datetime] = None,
+    user_id: str | None = None,
+    action: str | None = None,
+    resource_type: str | None = None,
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
     limit: int = 100,
     offset: int = 0,
-) -> List[AuditLog]:
+) -> list[AuditLog]:
     """Query audit logs with filters."""
     query = select(AuditLog).order_by(AuditLog.timestamp.desc())
 
@@ -113,11 +113,11 @@ async def query_audit_logs(
 
 async def count_audit_logs(
     session: AsyncSession,
-    user_id: Optional[str] = None,
-    action: Optional[str] = None,
-    resource_type: Optional[str] = None,
-    start_date: Optional[datetime] = None,
-    end_date: Optional[datetime] = None,
+    user_id: str | None = None,
+    action: str | None = None,
+    resource_type: str | None = None,
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
 ) -> int:
     """Count audit logs with filters."""
     query = select(AuditLog)

@@ -1,0 +1,38 @@
+##########################################################################
+# ServiceMonitor — Qdrant Vector Database
+#
+# Qdrant exposes Prometheus metrics at /metrics on port 6333 (REST).
+# Key metrics:
+#   qdrant_collections_total (gauge)
+#   qdrant_points_count (gauge, per collection)
+#   qdrant_grpc_requests_total (counter)
+#   qdrant_rest_responses_total (counter, with status code labels)
+#   qdrant_rest_response_duration_seconds (histogram)
+##########################################################################
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: qdrant
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: enterprise-slm
+    app.kubernetes.io/component: qdrant
+    release: kube-prometheus-stack
+spec:
+  namespaceSelector:
+    matchNames:
+      - slm-prod
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: qdrant
+  endpoints:
+    - port: rest
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s
+      scheme: http
+      relabelings:
+        - sourceLabels: [__meta_kubernetes_pod_label_app_kubernetes_io_component]
+          targetLabel: component
+        - replacement: slm-prod
+          targetLabel: cluster

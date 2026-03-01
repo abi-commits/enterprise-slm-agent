@@ -9,5 +9,10 @@ wheels/
 # Virtual environments
 .venv
 
+# Environment secrets — NEVER commit .env
+.env
+.env.local
+.env.*.local
+
 .gemini/
 gha-creds-*.json

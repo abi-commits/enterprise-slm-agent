@@ -1,0 +1,125 @@
+{{- if .Values.vllm.enabled }}
+##########################################################################
+# vLLM — Deployment (GPU-accelerated LLM inference server)
+#
+# Disabled by default (vllm.enabled=false). Enable in values-production.yaml
+# once GPU node pool is provisioned and NVIDIA device plugin is running.
+#
+# GPU access is via nvidia.com/gpu resource limit — no privilege escalation
+# required (PSS restricted compatible when seccompProfile is set).
+##########################################################################
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vllm
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "enterprise-slm.labels" . | nindent 4 }}
+    app.kubernetes.io/component: vllm
+spec:
+  replicas: 1    # One vLLM replica per GPU (GPU is not shareable by default)
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: vllm
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  strategy:
+    # Recreate to avoid two pods competing for the same GPU during updates
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        {{- include "enterprise-slm.labels" . | nindent 8 }}
+        app.kubernetes.io/component: vllm
+      annotations:
+        checksum/values: {{ .Values.vllm | toJson | sha256sum }}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      # Target GPU node pool exclusively
+      nodeSelector:
+        agentpool: gpupool
+      tolerations:
+        - key: "nvidia.com/gpu"
+          operator: "Equal"
+          value: "present"
+          effect: "NoSchedule"
+      # nvidia RuntimeClass exposes the host NVIDIA driver into the container
+      {{- if .Values.vllm.runtimeClassName }}
+      runtimeClassName: {{ .Values.vllm.runtimeClassName }}
+      {{- end }}
+      terminationGracePeriodSeconds: 120   # allow in-flight requests to complete
+      containers:
+        - name: vllm
+          image: "{{ .Values.vllm.image.repository }}:{{ .Values.vllm.image.tag }}"
+          imagePullPolicy: {{ .Values.vllm.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false   # vLLM caches compiled kernels
+            capabilities:
+              drop:
+                - ALL
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          env:
+            {{- range $key, $value := .Values.vllm.env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+            - name: HUGGINGFACE_HUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: slm-inference-runtime-secrets
+                  key: HUGGINGFACE_HUB_TOKEN
+                  optional: true
+            - name: HF_HOME
+              value: /model-cache/huggingface
+          livenessProbe:
+            {{- toYaml .Values.vllm.livenessProbe | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: /v1/models
+              port: 8000
+            initialDelaySeconds: 90
+            periodSeconds: 30
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.vllm.resources | nindent 12 }}
+          volumeMounts:
+            - name: model-cache
+              mountPath: /model-cache
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 256Mi
+        - name: model-cache
+          persistentVolumeClaim:
+            claimName: vllm-model-cache
+---
+##########################################################################
+# vLLM — PersistentVolumeClaim (model weights cache)
+##########################################################################
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: vllm-model-cache
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "enterprise-slm.labels" . | nindent 4 }}
+    app.kubernetes.io/component: vllm
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: {{ .Values.vllm.persistence.storageClassName }}
+  resources:
+    requests:
+      storage: {{ .Values.vllm.persistence.size }}
+{{- end }}

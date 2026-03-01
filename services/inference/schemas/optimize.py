@@ -1,6 +1,5 @@
 """Pydantic schemas for the Query Optimizer."""
 
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -15,7 +14,7 @@ class OptimizeRequest(BaseModel):
         description="The raw user query to optimize",
         examples=["What is the vacation policy?"],
     )
-    user_context: Optional[str] = Field(
+    user_context: str | None = Field(
         default=None,
         description="Additional user context (role, department, etc.)",
         examples=["User is in HR department"],

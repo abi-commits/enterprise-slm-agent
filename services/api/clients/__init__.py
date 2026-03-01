@@ -9,7 +9,10 @@ from services.api.clients.circuit_breaker import CircuitBreaker, CircuitState
 from services.api.clients.service_client import (
     ServiceClient,
     ServiceClientFactory,
+    clear_current_request_id,
+    get_current_request_id,
     service_clients,
+    set_current_request_id,
 )
 
 __all__ = [
@@ -18,4 +21,7 @@ __all__ = [
     "ServiceClient",
     "ServiceClientFactory",
     "service_clients",
+    "get_current_request_id",
+    "set_current_request_id",
+    "clear_current_request_id",
 ]

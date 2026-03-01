@@ -1,0 +1,21 @@
+{{- if .Values.api.enabled }}
+##########################################################################
+# API Service — PodDisruptionBudget
+# Ensures at least 1 API pod remains running during node drains or
+# voluntary disruptions (rolling upgrades, AZ maintenance).
+##########################################################################
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: api-service
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "enterprise-slm.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  minAvailable: {{ .Values.api.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: api
+      app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end }}

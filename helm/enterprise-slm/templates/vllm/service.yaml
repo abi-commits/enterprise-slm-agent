@@ -1,0 +1,27 @@
+{{- if .Values.vllm.enabled }}
+##########################################################################
+# vLLM — Service
+#
+# ClusterIP service exposing the OpenAI-compatible HTTP API on port 8000.
+# Downstream clients (inference service) call this via:
+#   http://vllm.{{ .Values.global.namespace }}.svc.cluster.local:8000
+##########################################################################
+apiVersion: v1
+kind: Service
+metadata:
+  name: vllm
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "enterprise-slm.labels" . | nindent 4 }}
+    app.kubernetes.io/component: vllm
+spec:
+  type: {{ .Values.vllm.service.type }}
+  selector:
+    app.kubernetes.io/component: vllm
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  ports:
+    - name: http
+      port: {{ .Values.vllm.service.port }}
+      targetPort: http
+      protocol: TCP
+{{- end }}

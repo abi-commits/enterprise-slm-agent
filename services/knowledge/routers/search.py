@@ -2,13 +2,12 @@
 
 import logging
 import time
-from typing import Any
 
 from fastapi import APIRouter, HTTPException, status
 
+from services.knowledge import schemas as knowledge_schemas
 from services.knowledge.retrieval import embeddings as embedding_service
 from services.knowledge.retrieval import reranker as reranker_service
-from services.knowledge import schemas as knowledge_schemas
 from services.knowledge.retrieval import vector_store as qdrant_service
 
 logger = logging.getLogger(__name__)
@@ -116,4 +115,4 @@ async def search_documents(request: knowledge_schemas.SearchRequest) -> knowledg
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Search failed: {str(e)}",
-        )
+        ) from e

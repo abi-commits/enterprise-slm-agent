@@ -4,20 +4,21 @@ Handles security events like token theft, suspicious activity, and breaches.
 """
 
 from datetime import datetime
-from enum import Enum
-from typing import Optional
+from enum import StrEnum
 
+import httpx
+import structlog
 from pydantic import BaseModel
 from sqlalchemy import insert
-import structlog
 
+from core.config.settings import get_settings
 from services.api.database.models import AuditLog
 from services.api.database.session import db_manager
 
 logger = structlog.get_logger(__name__)
 
 
-class SecurityEventType(str, Enum):
+class SecurityEventType(StrEnum):
     """Types of security events."""
 
     REFRESH_TOKEN_REUSE = "refresh_token_reuse"
@@ -26,7 +27,7 @@ class SecurityEventType(str, Enum):
     PRIVILEGE_ESCALATION = "privilege_escalation"
 
 
-class SecurityEventSeverity(str, Enum):
+class SecurityEventSeverity(StrEnum):
     """Severity levels for security events."""
 
     CRITICAL = "critical"  # Confirmed breach, immediate action required
@@ -59,7 +60,7 @@ async def alert_security_team(
     user_id: str,
     severity: SecurityEventSeverity,
     description: str,
-    metadata: Optional[dict] = None,
+    metadata: dict | None = None,
 ) -> None:
     """
     Alert the security team about a security event.
@@ -117,23 +118,75 @@ async def alert_security_team(
             error=str(audit_error),
         )
 
-    # TODO: Production integrations
-    # if severity == SecurityEventSeverity.CRITICAL:
-    #     await send_pagerduty_alert(event)
-    #     await send_email_alert("security@company.com", event)
-    #     await post_to_slack("#security-alerts-critical", event)
-    # elif severity == SecurityEventSeverity.HIGH:
-    #     await send_email_alert("security@company.com", event)
-    #     await post_to_slack("#security-alerts", event)
-    # else:
-    #     await post_to_slack("#security-monitoring", event)
+    # Send webhook notification for HIGH and CRITICAL events
+    settings = get_settings()
+    if settings.alert_webhook_url and severity in (
+        SecurityEventSeverity.CRITICAL,
+        SecurityEventSeverity.HIGH,
+    ):
+        await _send_webhook_alert(event, settings.alert_webhook_url)
 
-    # TODO: Log to SIEM
-    # await send_to_siem(event)
+    # TODO: PagerDuty for CRITICAL (add PAGERDUTY_ROUTING_KEY to settings)
+    # TODO: Log to SIEM endpoint (add SIEM_URL to settings)
 
-    # TODO: Create incident ticket
-    # if severity in [SecurityEventSeverity.CRITICAL, SecurityEventSeverity.HIGH]:
-    #     await create_incident_ticket(event)
+
+async def _send_webhook_alert(event: "SecurityEvent", webhook_url: str) -> None:
+    """
+    Send a security event notification to a Slack/Teams incoming webhook.
+
+    Compatible with both Slack Incoming Webhooks and Microsoft Teams connectors.
+    Fails silently (logs error) so a webhook failure never blocks the auth path.
+
+    Args:
+        event: The security event to notify about
+        webhook_url: Slack or Teams incoming webhook URL (from ALERT_WEBHOOK_URL)
+    """
+    severity_emoji = {
+        SecurityEventSeverity.CRITICAL: "🚨",
+        SecurityEventSeverity.HIGH: "⚠️",
+        SecurityEventSeverity.MEDIUM: "🔔",
+        SecurityEventSeverity.LOW: "ℹ️",
+    }
+    emoji = severity_emoji.get(event.severity, "🔔")
+
+    # Generic payload compatible with Slack Incoming Webhooks and Teams connectors
+    payload = {
+        "text": (
+            f"{emoji} *Security Alert* [{event.severity.value.upper()}]\n"
+            f"*Event:* {event.event_type.value}\n"
+            f"*User:* {event.user_id}\n"
+            f"*Description:* {event.description}\n"
+            f"*Timestamp:* {event.timestamp.isoformat()}Z"
+        ),
+        "attachments": [
+            {
+                "color": "danger" if event.severity == SecurityEventSeverity.CRITICAL else "warning",
+                "fields": [
+                    {"title": k, "value": str(v), "short": True}
+                    for k, v in event.metadata.items()
+                ],
+            }
+        ],
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.post(webhook_url, json=payload)
+            response.raise_for_status()
+        logger.info(
+            "security_webhook_sent",
+            event_type=event.event_type.value,
+            severity=event.severity.value,
+            status_code=response.status_code,
+        )
+    except Exception as webhook_error:
+        # Never let a webhook failure propagate — log and continue
+        logger.error(
+            "security_webhook_failed",
+            event_type=event.event_type.value,
+            severity=event.severity.value,
+            error=str(webhook_error),
+        )
 
 
 async def flag_user_for_password_reset(user_id: str, reason: str) -> None:
@@ -176,7 +229,7 @@ async def log_security_event_to_audit(
     user_id: str,
     event_type: str,
     details: dict,
-    ip_address: Optional[str] = None,
+    ip_address: str | None = None,
 ) -> None:
     """
     Log security event to audit_logs table for compliance and forensics.

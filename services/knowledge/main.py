@@ -17,17 +17,17 @@ from core.config.settings import get_settings
 from core.logging import configure_logging, get_logger
 from core.tracing import (
     configure_tracing,
+    instrument_cache,
     instrument_fastapi,
     instrument_http_clients,
-    instrument_cache,
 )
+from services.knowledge import schemas as knowledge_schemas
+from services.knowledge.queue import IngestionWorker, get_queue
 from services.knowledge.retrieval import embeddings as embedding_service
 from services.knowledge.retrieval import reranker as reranker_service
-from services.knowledge import schemas as knowledge_schemas
 from services.knowledge.retrieval import vector_store as qdrant_service
-from services.knowledge.routers import search as search_router
 from services.knowledge.routers import documents as documents_router
-from services.knowledge.queue import IngestionQueue, IngestionWorker, get_queue
+from services.knowledge.routers import search as search_router
 
 # Configure structured logging
 settings = get_settings()
@@ -89,14 +89,14 @@ async def lifespan(app: FastAPI):
         logger.info("Reranker model loaded successfully")
     except Exception as e:
         logger.error(f"Failed to load reranker model: {e}")
-    
+
     # Connect to Redis queue and start ingestion worker
     logger.info("Connecting to Redis queue...")
     try:
         queue = get_queue()
         await queue.connect()
         logger.info("Redis queue connected")
-        
+
         # Start ingestion worker
         _ingestion_worker = IngestionWorker(
             queue=queue,
@@ -114,12 +114,12 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     logger.info("Shutting down Knowledge Service...")
-    
+
     # Stop ingestion worker
     if _ingestion_worker:
         await _ingestion_worker.stop()
         logger.info("Ingestion worker stopped")
-    
+
     # Disconnect queue
     try:
         queue = get_queue()

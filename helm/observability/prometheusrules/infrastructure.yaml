@@ -1,0 +1,240 @@
+##########################################################################
+# PrometheusRule — SLM Infrastructure Alerts
+#
+# AKS cluster health rules covering pod lifecycle, HPA, PVC, and node
+# resource pressure for the slm-prod namespace.
+##########################################################################
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: slm-infrastructure-rules
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: enterprise-slm
+    release: kube-prometheus-stack
+spec:
+  groups:
+    # -----------------------------------------------------------------------
+    # Pod Health
+    # -----------------------------------------------------------------------
+    - name: slm.pods
+      interval: 60s
+      rules:
+        - alert: SLMPodCrashLooping
+          expr: |
+            increase(
+              kube_pod_container_status_restarts_total{
+                namespace="slm-prod"
+              }[15m]
+            ) > 5
+          for: 0m
+          labels:
+            severity: critical
+            cluster: slm-prod
+          annotations:
+            summary: "Pod crash-looping ({{ $labels.pod }})"
+            description: >-
+              Pod {{ $labels.namespace }}/{{ $labels.pod }} container {{ $labels.container }}
+              has restarted {{ $value | humanize }} times in the last 15 minutes.
+              Check: `kubectl logs {{ $labels.pod }} -n slm-prod --previous`
+
+        - alert: SLMPodNotReady
+          expr: |
+            sum by (pod, namespace) (
+              kube_pod_status_ready{
+                namespace="slm-prod",
+                condition="false"
+              }
+            ) > 0
+          for: 5m
+          labels:
+            severity: warning
+            cluster: slm-prod
+          annotations:
+            summary: "Pod not ready for 5+ minutes ({{ $labels.pod }})"
+            description: >-
+              Pod {{ $labels.namespace }}/{{ $labels.pod }} has been in a non-ready
+              state for more than 5 minutes.
+
+        - alert: SLMDeploymentReplicaMismatch
+          expr: |
+            kube_deployment_spec_replicas{namespace="slm-prod"}
+            !=
+            kube_deployment_status_replicas_available{namespace="slm-prod"}
+          for: 10m
+          labels:
+            severity: warning
+            cluster: slm-prod
+          annotations:
+            summary: "Deployment replica mismatch ({{ $labels.deployment }})"
+            description: >-
+              Deployment {{ $labels.namespace }}/{{ $labels.deployment }} has been
+              running fewer replicas than desired for 10 minutes.
+              Desired: {{ $labels.deployment | printf "kube_deployment_spec_replicas{deployment='%s',namespace='slm-prod'}" | query | first | value }}
+              Available: {{ $value | humanize }}
+
+        - alert: SLMStatefulSetNotReady
+          expr: |
+            kube_statefulset_status_replicas_ready{namespace="slm-prod"}
+            <
+            kube_statefulset_status_replicas{namespace="slm-prod"}
+          for: 10m
+          labels:
+            severity: warning
+            cluster: slm-prod
+          annotations:
+            summary: "StatefulSet not fully ready ({{ $labels.statefulset }})"
+            description: >-
+              StatefulSet {{ $labels.namespace }}/{{ $labels.statefulset }} has fewer
+              ready replicas than desired for 10+ minutes.
+
+    # -----------------------------------------------------------------------
+    # Horizontal Pod Autoscaler
+    # -----------------------------------------------------------------------
+    - name: slm.hpa
+      interval: 60s
+      rules:
+        - alert: SLMHPAMaxedOut
+          expr: |
+            kube_horizontalpodautoscaler_status_current_replicas{namespace="slm-prod"}
+            ==
+            kube_horizontalpodautoscaler_spec_max_replicas{namespace="slm-prod"}
+          for: 15m
+          labels:
+            severity: warning
+            cluster: slm-prod
+          annotations:
+            summary: "HPA at maximum replicas for 15+ min ({{ $labels.horizontalpodautoscaler }})"
+            description: >-
+              HPA {{ $labels.namespace }}/{{ $labels.horizontalpodautoscaler }} has been
+              running at maximum capacity ({{ $value }} replicas) for 15+ minutes.
+              Consider increasing maxReplicas or investigating traffic spike.
+
+        - alert: SLMHPAScaleFailure
+          expr: |
+            kube_horizontalpodautoscaler_status_condition{
+              namespace="slm-prod",
+              condition="AbleToScale",
+              status="false"
+            } == 1
+          for: 5m
+          labels:
+            severity: critical
+            cluster: slm-prod
+          annotations:
+            summary: "HPA unable to scale ({{ $labels.horizontalpodautoscaler }})"
+            description: >-
+              HPA {{ $labels.namespace }}/{{ $labels.horizontalpodautoscaler }} reports
+              it cannot scale. This may indicate insufficient node capacity or quota limits.
+
+    # -----------------------------------------------------------------------
+    # Container Resources
+    # -----------------------------------------------------------------------
+    - name: slm.resources
+      interval: 60s
+      rules:
+        - alert: SLMHighMemoryUsage
+          expr: |
+            sum(container_memory_working_set_bytes{
+              namespace="slm-prod",
+              container!=""
+            }) by (pod, container)
+            /
+            sum(kube_pod_container_resource_limits{
+              namespace="slm-prod",
+              resource="memory"
+            }) by (pod, container)
+            > 0.85
+          for: 5m
+          labels:
+            severity: warning
+            cluster: slm-prod
+          annotations:
+            summary: "Container memory > 85% of limit ({{ $labels.pod }}/{{ $labels.container }})"
+            description: >-
+              Container {{ $labels.container }} in pod {{ $labels.pod }} is using
+              {{ $value | humanizePercentage }} of its memory limit.
+              Risk of OOMKill if usage continues to grow.
+
+        - alert: SLMOOMKillDetected
+          expr: |
+            increase(
+              kube_pod_container_status_last_terminated_reason{
+                namespace="slm-prod",
+                reason="OOMKilled"
+              }[1h]
+            ) > 0
+          for: 0m
+          labels:
+            severity: critical
+            cluster: slm-prod
+          annotations:
+            summary: "OOMKill in {{ $labels.pod }}/{{ $labels.container }}"
+            description: >-
+              Container {{ $labels.container }} in pod {{ $labels.pod }} was OOMKilled.
+              Increase memory limit or investigate memory leak.
+
+        - alert: SLMHighCPUSustained
+          expr: |
+            sum(rate(container_cpu_usage_seconds_total{
+              namespace="slm-prod",
+              container!=""
+            }[5m])) by (pod, container)
+            /
+            sum(kube_pod_container_resource_limits{
+              namespace="slm-prod",
+              resource="cpu"
+            }) by (pod, container)
+            > 0.90
+          for: 15m
+          labels:
+            severity: warning
+            cluster: slm-prod
+          annotations:
+            summary: "Container CPU > 90% of limit for 15min ({{ $labels.pod }}/{{ $labels.container }})"
+            description: >-
+              Container {{ $labels.container }} in {{ $labels.pod }} has CPU usage at
+              {{ $value | humanizePercentage }} of its limit for 15+ minutes.
+              HPA should handle this — check if HPA is functioning correctly.
+
+    # -----------------------------------------------------------------------
+    # Persistent Volume Claim
+    # -----------------------------------------------------------------------
+    - name: slm.storage
+      interval: 60s
+      rules:
+        - alert: SLMPVCAlmostFull
+          expr: |
+            (
+              kubelet_volume_stats_available_bytes{namespace="slm-prod"}
+              /
+              kubelet_volume_stats_capacity_bytes{namespace="slm-prod"}
+            ) < 0.20
+          for: 5m
+          labels:
+            severity: warning
+            cluster: slm-prod
+          annotations:
+            summary: "PVC less than 20% remaining ({{ $labels.persistentvolumeclaim }})"
+            description: >-
+              PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} has only
+              {{ $value | humanizePercentage }} space remaining.
+              Expand the PVC: `kubectl patch pvc {{ $labels.persistentvolumeclaim }} -n slm-prod
+              -p '{"spec":{"resources":{"requests":{"storage":"<new-size>"}}}}'`
+
+        - alert: SLMPVCCriticallyFull
+          expr: |
+            (
+              kubelet_volume_stats_available_bytes{namespace="slm-prod"}
+              /
+              kubelet_volume_stats_capacity_bytes{namespace="slm-prod"}
+            ) < 0.05
+          for: 0m
+          labels:
+            severity: critical
+            cluster: slm-prod
+          annotations:
+            summary: "PVC critically full — less than 5% remaining ({{ $labels.persistentvolumeclaim }})"
+            description: >-
+              PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} is almost full.
+              Service disruption imminent. Expand immediately.

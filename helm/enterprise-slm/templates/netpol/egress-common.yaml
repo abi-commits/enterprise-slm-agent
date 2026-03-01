@@ -1,0 +1,46 @@
+{{- if .Values.networkPolicies.enabled }}
+##########################################################################
+# NetworkPolicy — Egress: DNS (all pods)
+# All pods need kube-dns resolution. UDP+TCP port 53 to kube-system.
+##########################################################################
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-dns
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "enterprise-slm.labels" . | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+---
+##########################################################################
+# NetworkPolicy — Egress: Azure OIDC / Workload Identity token endpoint
+# Pods using Workload Identity must reach the OIDC issuer over HTTPS.
+# Target is Azure public endpoints; allow egress on 443 to any IP.
+##########################################################################
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-azure-oidc
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "enterprise-slm.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      azure.workload.identity/use: "true"
+  policyTypes:
+    - Egress
+  egress:
+    - ports:
+        - port: 443
+          protocol: TCP
+{{- end }}

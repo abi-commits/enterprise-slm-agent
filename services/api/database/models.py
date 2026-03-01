@@ -9,7 +9,7 @@ All models use SQLAlchemy async for consistent database patterns.
 """
 
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any
 
 from sqlalchemy import JSON, Boolean, DateTime, Float, Integer, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -23,17 +23,17 @@ class Base(DeclarativeBase):
 
 class User(Base):
     """Model for user authentication.
-    
+
     Migrated from asyncpg to SQLAlchemy for unified database patterns.
     """
-    
+
     __tablename__ = "users"
-    
+
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
     username: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, index=True)
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
-    full_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    full_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     role: Mapped[str] = mapped_column(String(50), nullable=False, default="user")
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(
@@ -55,8 +55,8 @@ class MetricRecord(Base):
     query_confidence: Mapped[float] = mapped_column(Float, nullable=False)
     branch_taken: Mapped[str] = mapped_column(String(50), nullable=False)
     escalation_flag: Mapped[bool] = mapped_column(Integer, nullable=False, default=0)
-    latency_per_service: Mapped[Optional[Dict[str, float]]] = mapped_column(JSON, nullable=True)
-    token_usage: Mapped[Optional[Dict[str, int]]] = mapped_column(JSON, nullable=True)
+    latency_per_service: Mapped[dict[str, float] | None] = mapped_column(JSON, nullable=True)
+    token_usage: Mapped[dict[str, int] | None] = mapped_column(JSON, nullable=True)
     response_time_ms: Mapped[float] = mapped_column(Float, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, nullable=False
@@ -72,10 +72,10 @@ class AuditLog(Base):
     user_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     action: Mapped[str] = mapped_column(String(100), nullable=False)
     resource_type: Mapped[str] = mapped_column(String(100), nullable=False)
-    resource_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    details: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
-    ip_address: Mapped[Optional[str]] = mapped_column(String(45), nullable=True)
-    user_agent: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    resource_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    details: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    ip_address: Mapped[str | None] = mapped_column(String(45), nullable=True)
+    user_agent: Mapped[str | None] = mapped_column(Text, nullable=True)
     timestamp: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, nullable=False, index=True
     )
@@ -83,7 +83,7 @@ class AuditLog(Base):
 
 class Document(Base):
     """Model for document metadata.
-    
+
     Replaces the in-memory _document_store dict from vector_store.py.
     Tracks documents uploaded to the Knowledge Service.
     """
@@ -109,7 +109,7 @@ class Document(Base):
 
 class DocumentChunk(Base):
     """Model for tracking document chunks in Qdrant.
-    
+
     Maps Qdrant point IDs to their parent document for efficient
     deletion and updates.
     """
@@ -129,10 +129,10 @@ class DocumentChunk(Base):
 
 class RefreshToken(Base):
     """Model for JWT refresh tokens.
-    
+
     Enables token refresh without re-authentication and supports
     token revocation for security.
-    
+
     Security: Implements reuse detection - if a revoked token is presented,
     it indicates theft and triggers automatic revocation of ALL user tokens.
     """
@@ -147,12 +147,12 @@ class RefreshToken(Base):
         DateTime, default=datetime.utcnow, nullable=False
     )
     revoked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    
+
     # Reuse detection fields
-    revoked_at: Mapped[Optional[datetime]] = mapped_column(
+    revoked_at: Mapped[datetime | None] = mapped_column(
         DateTime, nullable=True, index=True
     )
-    last_used_at: Mapped[Optional[datetime]] = mapped_column(
+    last_used_at: Mapped[datetime | None] = mapped_column(
         DateTime, nullable=True
     )
     used_count: Mapped[int] = mapped_column(

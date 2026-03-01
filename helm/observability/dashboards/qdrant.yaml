@@ -1,0 +1,134 @@
+##########################################################################
+# Grafana Dashboard — Qdrant Vector Database
+#
+# Covers Qdrant-specific metrics: collections, points, request rate,
+# gRPC/REST response times, and memory usage.
+##########################################################################
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-qdrant
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+  annotations:
+    grafana_folder: "Enterprise SLM"
+data:
+  qdrant.json: |
+    {
+      "title": "SLM — Qdrant Vector Database",
+      "uid": "slm-qdrant",
+      "tags": ["slm", "qdrant", "vector-db"],
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "refresh": "30s",
+      "time": { "from": "now-1h", "to": "now" },
+      "templating": {
+        "list": [
+          {
+            "name": "datasource",
+            "type": "datasource",
+            "query": "prometheus",
+            "current": { "value": "Prometheus" }
+          }
+        ]
+      },
+      "panels": [
+        {
+          "id": 1, "type": "stat", "title": "Total Collections",
+          "gridPos": { "x": 0, "y": 0, "w": 4, "h": 4 },
+          "targets": [{
+            "expr": "qdrant_collections_total",
+            "legendFormat": "collections",
+            "datasource": "${datasource}"
+          }],
+          "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
+          "fieldConfig": { "defaults": { "unit": "short" } }
+        },
+        {
+          "id": 2, "type": "stat", "title": "Total Points (documents)",
+          "gridPos": { "x": 4, "y": 0, "w": 4, "h": 4 },
+          "targets": [{
+            "expr": "sum(qdrant_points_count)",
+            "legendFormat": "points",
+            "datasource": "${datasource}"
+          }],
+          "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
+          "fieldConfig": { "defaults": { "unit": "short" } }
+        },
+        {
+          "id": 3, "type": "stat", "title": "REST Request Rate (RPS)",
+          "gridPos": { "x": 8, "y": 0, "w": 4, "h": 4 },
+          "targets": [{
+            "expr": "sum(rate(qdrant_rest_responses_total[5m]))",
+            "legendFormat": "req/s",
+            "datasource": "${datasource}"
+          }],
+          "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+          "fieldConfig": { "defaults": { "unit": "reqps" } }
+        },
+        {
+          "id": 4, "type": "stat", "title": "gRPC Request Rate (RPS)",
+          "gridPos": { "x": 12, "y": 0, "w": 4, "h": 4 },
+          "targets": [{
+            "expr": "sum(rate(qdrant_grpc_requests_total[5m]))",
+            "legendFormat": "req/s",
+            "datasource": "${datasource}"
+          }],
+          "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+          "fieldConfig": { "defaults": { "unit": "reqps" } }
+        },
+        {
+          "id": 10, "type": "timeseries", "title": "REST Response Latency Percentiles",
+          "gridPos": { "x": 0, "y": 4, "w": 12, "h": 8 },
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.50, sum(rate(qdrant_rest_response_duration_seconds_bucket[5m])) by (le))",
+              "legendFormat": "P50",
+              "datasource": "${datasource}"
+            },
+            {
+              "expr": "histogram_quantile(0.95, sum(rate(qdrant_rest_response_duration_seconds_bucket[5m])) by (le))",
+              "legendFormat": "P95",
+              "datasource": "${datasource}"
+            },
+            {
+              "expr": "histogram_quantile(0.99, sum(rate(qdrant_rest_response_duration_seconds_bucket[5m])) by (le))",
+              "legendFormat": "P99",
+              "datasource": "${datasource}"
+            }
+          ],
+          "fieldConfig": { "defaults": { "unit": "s" } }
+        },
+        {
+          "id": 11, "type": "timeseries", "title": "REST Responses by Status Code",
+          "gridPos": { "x": 12, "y": 4, "w": 12, "h": 8 },
+          "targets": [{
+            "expr": "sum(rate(qdrant_rest_responses_total[5m])) by (status)",
+            "legendFormat": "{{ status }}",
+            "datasource": "${datasource}"
+          }],
+          "fieldConfig": { "defaults": { "unit": "reqps" } }
+        },
+        {
+          "id": 12, "type": "timeseries", "title": "Qdrant Memory Usage",
+          "gridPos": { "x": 0, "y": 12, "w": 12, "h": 7 },
+          "targets": [{
+            "expr": "container_memory_working_set_bytes{namespace='slm-prod', pod=~'qdrant-.*', container='qdrant'}",
+            "legendFormat": "{{ pod }}",
+            "datasource": "${datasource}"
+          }],
+          "fieldConfig": { "defaults": { "unit": "bytes" } }
+        },
+        {
+          "id": 13, "type": "timeseries", "title": "Points Count over Time (by collection)",
+          "gridPos": { "x": 12, "y": 12, "w": 12, "h": 7 },
+          "targets": [{
+            "expr": "qdrant_points_count",
+            "legendFormat": "{{ collection }}",
+            "datasource": "${datasource}"
+          }],
+          "fieldConfig": { "defaults": { "unit": "short" } }
+        }
+      ]
+    }

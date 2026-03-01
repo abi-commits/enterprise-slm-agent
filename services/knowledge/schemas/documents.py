@@ -1,7 +1,7 @@
 """Document schemas for the Knowledge Service."""
 
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -12,7 +12,7 @@ class UploadRequest(BaseModel):
     title: str = Field(..., description="Document title")
     department: str = Field(..., description="Department the document belongs to")
     access_role: str = Field(default="all", description="Access role for RBAC (e.g., 'all', 'engineer', 'manager', 'admin')")
-    metadata: Optional[dict[str, Any]] = Field(default_factory=dict, description="Additional metadata")
+    metadata: dict[str, Any] | None = Field(default_factory=dict, description="Additional metadata")
 
 
 # ============================================================================
@@ -39,7 +39,7 @@ class JobStatusResponse(BaseModel):
     department: str = Field(..., description="Document department")
     chunks_created: int = Field(default=0, description="Number of chunks created (when completed)")
     processing_time_ms: float = Field(default=0.0, description="Processing time in milliseconds")
-    error_message: Optional[str] = Field(None, description="Error message if failed")
+    error_message: str | None = Field(None, description="Error message if failed")
     retry_count: int = Field(default=0, description="Number of retry attempts")
     created_at: datetime = Field(..., description="Job creation timestamp")
     updated_at: datetime = Field(..., description="Last update timestamp")
@@ -53,10 +53,10 @@ class BulkUploadItem(BaseModel):
     """Individual file status in bulk upload."""
 
     filename: str = Field(..., description="Original filename")
-    job_id: Optional[str] = Field(None, description="Job ID for async processing")
-    document_id: Optional[str] = Field(None, description="Document ID")
+    job_id: str | None = Field(None, description="Job ID for async processing")
+    document_id: str | None = Field(None, description="Document ID")
     status: str = Field(..., description="Status: queued, failed")
-    error: Optional[str] = Field(None, description="Error message if failed")
+    error: str | None = Field(None, description="Error message if failed")
 
 
 class BulkUploadResponse(BaseModel):
@@ -84,10 +84,10 @@ class DocumentStatusResponse(BaseModel):
     status: str = Field(..., description="Current status (processing, completed, failed)")
     chunks: int = Field(default=0, description="Number of chunks indexed")
     created_at: datetime = Field(..., description="Creation timestamp")
-    title: Optional[str] = Field(None, description="Document title")
-    department: Optional[str] = Field(None, description="Document department")
-    access_role: Optional[str] = Field(None, description="Access role")
-    error_message: Optional[str] = Field(None, description="Error message if failed")
+    title: str | None = Field(None, description="Document title")
+    department: str | None = Field(None, description="Document department")
+    access_role: str | None = Field(None, description="Access role")
+    error_message: str | None = Field(None, description="Error message if failed")
 
 
 class DeleteRequest(BaseModel):

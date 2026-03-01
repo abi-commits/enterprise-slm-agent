@@ -8,7 +8,7 @@ Configures JSON logging for all services to enable:
 
 import logging
 import logging.config
-from typing import Any, Optional
+from typing import Any
 
 import structlog
 
@@ -20,7 +20,7 @@ def configure_logging(
 ) -> None:
     """
     Configure structlog for JSON output.
-    
+
     Args:
         log_level: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
         json_output: Whether to output JSON (True) or plain text (False)
@@ -28,7 +28,7 @@ def configure_logging(
     """
     # Convert log_level string to logging constant
     numeric_level = getattr(logging, log_level.upper(), logging.INFO)
-    
+
     # Configure standard library logging to use structlog
     logging.config.dictConfig(
         {
@@ -68,7 +68,7 @@ def configure_logging(
             },
         }
     )
-    
+
     # Configure structlog
     structlog.configure(
         processors=[
@@ -86,10 +86,10 @@ def configure_logging(
         logger_factory=structlog.stdlib.LoggerFactory(),
         cache_logger_on_first_use=True,
     )
-    
+
     # Get structlog logger and set up initial context
     logger = structlog.get_logger()
-    
+
     # Log startup
     logger.info(
         "logging_configured",
@@ -102,10 +102,10 @@ def configure_logging(
 def get_logger(name: str = __name__) -> Any:
     """
     Get a structlog logger instance.
-    
+
     Args:
         name: Logger name (typically __name__)
-        
+
     Returns:
         Configured structlog logger
     """
@@ -114,16 +114,16 @@ def get_logger(name: str = __name__) -> Any:
 
 def bind_request_context(
     request_id: str,
-    user_id: Optional[str] = None,
-    user_agent: Optional[str] = None,
-    ip_address: Optional[str] = None,
+    user_id: str | None = None,
+    user_agent: str | None = None,
+    ip_address: str | None = None,
 ) -> None:
     """
     Bind request-specific context to all subsequent logs.
-    
+
     Use in middleware to automatically include this data in all logs
     for easier distributed tracing.
-    
+
     Args:
         request_id: Unique request identifier
         user_id: User ID from auth token
@@ -131,7 +131,7 @@ def bind_request_context(
         ip_address: Client IP address
     """
     logger = structlog.get_logger()
-    
+
     context = {"request_id": request_id}
     if user_id:
         context["user_id"] = user_id
@@ -139,7 +139,7 @@ def bind_request_context(
         context["user_agent"] = user_agent
     if ip_address:
         context["ip_address"] = ip_address
-    
+
     logger.bind(**context)
 
 

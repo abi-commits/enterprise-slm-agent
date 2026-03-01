@@ -1,6 +1,6 @@
 """Search schemas for the Knowledge Service."""
 
-from typing import Any, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -11,7 +11,7 @@ class SearchRequest(BaseModel):
     query: str = Field(..., description="Search query text", min_length=1, max_length=1000)
     user_role: str = Field(..., description="User role for RBAC filtering")
     top_k: int = Field(default=10, ge=1, le=100, description="Number of results to return")
-    filters: Optional[dict[str, Any]] = Field(default=None, description="Additional filters for search")
+    filters: dict[str, Any] | None = Field(default=None, description="Additional filters for search")
 
 
 class Document(BaseModel):
