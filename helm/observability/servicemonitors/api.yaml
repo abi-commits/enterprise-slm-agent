@@ -1,0 +1,51 @@
+##########################################################################
+# ServiceMonitor — API Service
+#
+# Prometheus scrapes /metrics/prometheus on port 8000 of the api-service.
+# The API service exposes the following custom metrics:
+#   slm_total_requests (counter)
+#   slm_auth_failures_total (counter)
+#   slm_query_latency_seconds (histogram)
+#   slm_response_time_ms (histogram)
+#   slm_llm_escalations_total (counter)
+#   slm_active_users (gauge)
+#   slm_token_usage (histogram)
+#   slm_cost_accumulated_usd (gauge)
+#   + standard prometheus_client python metrics
+##########################################################################
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: api-service
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: enterprise-slm
+    app.kubernetes.io/component: api
+    release: kube-prometheus-stack    # must match kube-prometheus-stack release name
+spec:
+  namespaceSelector:
+    matchNames:
+      - slm-prod
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: api
+  endpoints:
+    - port: http
+      path: /metrics/prometheus
+      interval: 15s
+      scrapeTimeout: 10s
+      scheme: http
+      # Add cluster and environment labels to all scraped series
+      relabelings:
+        - sourceLabels: [__meta_kubernetes_pod_label_app_kubernetes_io_component]
+          targetLabel: component
+        - sourceLabels: [__meta_kubernetes_namespace]
+          targetLabel: namespace
+        - replacement: slm-prod
+          targetLabel: cluster
+      metricRelabelings:
+        # Drop high-cardinality user_id labels from metrics (keep totals only)
+        - sourceLabels: [user_id]
+          regex: ".+"
+          targetLabel: user_id
+          replacement: "redacted"

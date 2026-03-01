@@ -1,0 +1,124 @@
+##########################################################################
+# Loki — Production Values (singleBinary mode)
+#
+# Chart: grafana/loki
+# Install:
+#   helm repo add grafana https://grafana.github.io/helm-charts
+#   helm repo update
+#   helm upgrade --install loki grafana/loki \
+#     -f helm/observability/loki/values.yaml \
+#     --namespace monitoring --version 6.x \
+#     --wait --timeout 10m
+#
+# Storage backend: PVC (Azure Premium SSD) for initial deployment.
+# Production upgrade path: Switch to Azure Blob Storage by uncommenting
+# the `storage:` block below and creating an Azure storage account.
+##########################################################################
+
+# Deploy as single binary for initial deployment
+deploymentMode: SingleBinary
+
+loki:
+  auth_enabled: false   # Single-tenant; enable multi-tenancy when needed
+
+  commonConfig:
+    replication_factor: 1   # increase to 3 when using distributed mode
+
+  # Ingestion limits
+  limits_config:
+    ingestion_rate_mb: 16
+    ingestion_burst_size_mb: 32
+    max_streams_per_user: 10000
+    max_chunks_per_query: 2000000
+    max_query_series: 10000
+    max_entries_limit_per_query: 50000
+    # Retain logs for 30 days
+    retention_period: 720h
+
+  # Storage — initial PVC backend
+  storage:
+    type: filesystem
+
+  schemaConfig:
+    configs:
+      - from: "2024-01-01"
+        store: tsdb
+        object_store: filesystem
+        schema: v13
+        index:
+          prefix: loki_index_
+          period: 24h
+
+  # Structured metadata for log enrichment
+  structuredMetadata:
+    enabled: true
+
+singleBinary:
+  replicas: 1
+
+  nodeSelector:
+    agentpool: apppool
+
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+
+  persistence:
+    enabled: true
+    storageClass: managed-premium
+    size: 50Gi
+
+  extraVolumes:
+    - name: tmp
+      emptyDir: {}
+  extraVolumeMounts:
+    - name: tmp
+      mountPath: /tmp
+
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 10001
+    runAsGroup: 10001
+    fsGroup: 10001
+    seccompProfile:
+      type: RuntimeDefault
+
+  containerSecurityContext:
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+
+# Disable components not needed in singleBinary mode
+backend:
+  replicas: 0
+read:
+  replicas: 0
+write:
+  replicas: 0
+
+# Promtail — log shipping agent (runs as DaemonSet on all nodes)
+# Deployed separately: helm upgrade --install promtail grafana/promtail -f loki/promtail.yaml
+# This values file covers the Loki server only.
+
+# ---------------------------------------------------------------------------
+# Azure Blob Storage backend — UNCOMMENT to migrate from filesystem PVC
+# Requires: az storage account create --name stslmprodloki ...
+#           az storage container create --account-name stslmprodloki --name loki-chunks
+# ---------------------------------------------------------------------------
+# loki:
+#   storage:
+#     type: azure
+#     azure:
+#       accountName: "stslmprodloki"
+#       userAssignedId: "<loki-workload-identity-client-id>"
+#       # chunks, ruler, and admin containers created separately
+#       container: loki-chunks
+#   storageConfig:
+#     azure:
+#       container_name: loki-chunks

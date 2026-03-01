@@ -1,7 +1,7 @@
 """Common models shared across services."""
 
 from datetime import datetime
-from typing import Any, Generic, Optional, TypeVar
+from typing import Generic, TypeVar
 
 from pydantic import BaseModel, Field
 
@@ -21,7 +21,7 @@ class ErrorResponse(BaseModel):
 
     error: str = Field(..., description="Error code")
     message: str = Field(..., description="Human-readable error message")
-    request_id: Optional[str] = Field(None, description="Request ID for tracking")
+    request_id: str | None = Field(None, description="Request ID for tracking")
     timestamp: datetime = Field(
         default_factory=datetime.utcnow, description="Error timestamp"
     )
@@ -31,8 +31,8 @@ class BaseResponse(BaseModel, Generic[T]):
     """Generic base response model."""
 
     success: bool = Field(..., description="Whether the operation was successful")
-    data: Optional[T] = Field(None, description="Response data")
-    message: Optional[str] = Field(None, description="Optional message")
+    data: T | None = Field(None, description="Response data")
+    message: str | None = Field(None, description="Optional message")
     timestamp: datetime = Field(
         default_factory=datetime.utcnow, description="Response timestamp"
     )

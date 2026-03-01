@@ -20,14 +20,14 @@ from core.config.settings import get_settings
 from core.logging import configure_logging, get_logger
 from core.tracing import (
     configure_tracing,
+    instrument_cache,
+    instrument_database,
     instrument_fastapi,
     instrument_http_clients,
-    instrument_database,
-    instrument_cache,
 )
 from services.api.cache import cache_manager
 from services.api.clients import service_clients
-from services.api.database import db, init_db, close_db
+from services.api.database import close_db, db, init_db
 from services.api.middleware import (
     close_rate_limit_redis,
     connect_rate_limit_redis,
@@ -35,7 +35,7 @@ from services.api.middleware import (
     log_requests,
     rate_limit_middleware,
 )
-from services.api.routers import auth_router, audit_router, metrics_router, query_router
+from services.api.routers import audit_router, auth_router, metrics_router, query_router
 from services.api.routers.metrics import prometheus_app
 
 # Configure structured logging
@@ -148,10 +148,10 @@ instrument_database()
 # Instrument cache operations
 instrument_cache()
 
-# CORS middleware
+# CORS middleware — origins controlled by CORS_ORIGINS env var (empty = deny all in production)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -212,13 +212,12 @@ async def health_check_aggregate():
     Returns:
         Detailed health status of all components with individual check results.
     """
-    import asyncio
     import time
-    
+
     start_time = time.time()
     checks = {}
     overall_status = "healthy"
-    
+
     # Check auth database (SQLAlchemy)
     try:
         from services.api.database import db_manager
@@ -229,7 +228,7 @@ async def health_check_aggregate():
     except Exception as e:
         checks["auth_db"] = {"status": "unhealthy", "error": str(e)}
         overall_status = "degraded"
-    
+
     # Check Redis (cache)
     try:
         from services.api.cache import cache_manager
@@ -242,7 +241,7 @@ async def health_check_aggregate():
     except Exception as e:
         checks["redis_cache"] = {"status": "unhealthy", "error": str(e)}
         overall_status = "degraded"
-    
+
     # Check Redis (rate limiting)
     try:
         redis_client = await get_rate_limit_redis()
@@ -255,7 +254,7 @@ async def health_check_aggregate():
     except Exception as e:
         checks["redis_rate_limit"] = {"status": "unhealthy", "error": str(e)}
         overall_status = "degraded"
-    
+
     # Check Knowledge Service
     try:
         knowledge_client = service_clients.get_knowledge_client()
@@ -282,7 +281,7 @@ async def health_check_aggregate():
             "circuit_breaker": knowledge_client.circuit_breaker.state.value,
         }
         overall_status = "degraded"
-    
+
     # Check Inference Service
     try:
         inference_client = service_clients.get_inference_client()
@@ -309,9 +308,9 @@ async def health_check_aggregate():
             "circuit_breaker": inference_client.circuit_breaker.state.value,
         }
         overall_status = "degraded"
-    
+
     elapsed_ms = (time.time() - start_time) * 1000
-    
+
     return {
         "status": overall_status,
         "service": "api-service",
@@ -325,7 +324,14 @@ async def health_check_aggregate():
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     """Global exception handler for unhandled errors."""
-    logger.error(f"Unhandled exception: {exc}")
+    # Use a generic fallback for logging if the main logger isn't ready
+    try:
+        from core.logging import get_logger
+        _err_logger = get_logger("api-service.error")
+        _err_logger.error(f"Unhandled exception: {exc}")
+    except Exception:
+        print(f"CRITICAL: Unhandled exception (logger failed): {exc}")
+
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={
@@ -349,11 +355,19 @@ async def not_found_handler(request: Request, exc):
 
 
 if __name__ == "__main__":
+    import sys
+
     import uvicorn
+
+    # Allow port to be overridden by command line arg for local testing
+    port = 8000
+    for i, arg in enumerate(sys.argv):
+        if arg == "--port" and i + 1 < len(sys.argv):
+            port = int(sys.argv[i + 1])
 
     uvicorn.run(
         "services.api.main:app",
         host="0.0.0.0",
-        port=8000,
+        port=port,
         reload=settings.debug,
     )

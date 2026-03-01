@@ -11,19 +11,19 @@ Adapted from services/gateway/routers/query.py with key changes:
 
 import time
 import uuid
-from typing import Any, Optional
 
+import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
-import structlog
 
 from core.config.settings import get_settings
+from services.api import prometheus
 from services.api.cache import CacheManager, get_cache
-from services.api.clients import ServiceClientFactory, service_clients, set_current_request_id
+from services.api.clients import service_clients, set_current_request_id
 from services.api.database import (
     engine,
-    store_metric,
     store_audit_log,
+    store_metric,
 )
 from services.api.routers.auth import get_current_user
 from services.api.schemas import (
@@ -34,7 +34,6 @@ from services.api.schemas import (
     Source,
     ValidateTokenResponse,
 )
-from services.api import prometheus
 
 logger = structlog.get_logger(__name__)
 
@@ -101,7 +100,7 @@ async def handle_query(
     latencies: dict[str, float] = {}
     branch_taken = "direct"
     escalation_flag = False
-    token_usage: Optional[dict[str, int]] = None
+    token_usage: dict[str, int] | None = None
     query_confidence = 0.0
 
     logger.info(
@@ -148,7 +147,7 @@ async def handle_query(
 
             # Generate clarification options
             options = []
-            for i, opt_query in enumerate(optimized_queries[:3]):
+            for _i, opt_query in enumerate(optimized_queries[:3]):
                 options.append(
                     {
                         "text": f"Did you mean: {opt_query}?",
@@ -366,7 +365,7 @@ async def handle_query(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error processing query: {str(e)}",
-        )
+        ) from e
 
 
 @router.post("/clarification", response_model=QueryResponse)

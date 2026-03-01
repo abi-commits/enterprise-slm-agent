@@ -1,0 +1,89 @@
+##########################################################################
+# Tempo — Distributed Tracing Backend Values (singleBinary mode)
+#
+# Chart: grafana/tempo-distributed (or grafana/tempo for single binary)
+# Install:
+#   helm upgrade --install tempo grafana/tempo \
+#     -f helm/observability/tempo/values.yaml \
+#     --namespace monitoring --version 1.x \
+#     --wait --timeout 5m
+#
+# Application pods push traces via OTLP to:
+#   http://tempo.monitoring.svc.cluster.local:4317 (gRPC)
+#   http://tempo.monitoring.svc.cluster.local:4318 (HTTP)
+#
+# Set in application env: OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo.monitoring.svc.cluster.local:4317
+##########################################################################
+
+tempo:
+  # Single-binary mode — scale to distributed when trace volume exceeds ~100k spans/min
+  reportingEnabled: false
+
+  # Trace retention — 24h by default (traces are very verbose)
+  # Increase to 168h (7d) when you need cross-day debugging
+  retention: 24h
+
+  # Receivers — accept traces from all standard protocols
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: "0.0.0.0:4317"
+        http:
+          endpoint: "0.0.0.0:4318"
+    jaeger:
+      protocols:
+        grpc:
+          endpoint: "0.0.0.0:14250"
+        thrift_http:
+          endpoint: "0.0.0.0:14268"
+    zipkin:
+      endpoint: "0.0.0.0:9411"
+
+  # Storage — filesystem PVC
+  storage:
+    trace:
+      backend: local
+      local:
+        path: /var/tempo/traces
+      wal:
+        path: /var/tempo/wal
+
+  # Resource limits
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+
+persistence:
+  enabled: true
+  storageClassName: managed-premium
+  accessModes:
+    - ReadWriteOnce
+  size: 20Gi
+
+nodeSelector:
+  agentpool: apppool
+
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  readOnlyRootFilesystem: false   # Tempo writes WAL to /var/tempo
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+
+serviceMonitor:
+  enabled: true
+  namespace: monitoring
+  interval: "15s"

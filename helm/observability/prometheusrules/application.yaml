@@ -1,0 +1,236 @@
+##########################################################################
+# PrometheusRule — SLM Application Alerts
+#
+# Custom alert rules based on the application-specific metrics emitted by
+# the API service (slm_* metrics from services/api/prometheus.py).
+#
+# All alerts use a severity label:
+#   critical → fires immediately, repeats every 1h, pages on-call
+#   warning  → batched every 5m, repeats every 12h, notifies channel
+##########################################################################
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: slm-application-rules
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: enterprise-slm
+    release: kube-prometheus-stack
+spec:
+  groups:
+    # -----------------------------------------------------------------------
+    # Service Availability
+    # -----------------------------------------------------------------------
+    - name: slm.availability
+      interval: 30s
+      rules:
+        - alert: SLMApiServiceDown
+          expr: |
+            absent(up{job="api-service", namespace="slm-prod"} == 1)
+          for: 2m
+          labels:
+            severity: critical
+            service: api-service
+            cluster: slm-prod
+          annotations:
+            summary: "API service is unreachable"
+            description: >-
+              No healthy API service pods have been responding to Prometheus
+              scrapes for more than 2 minutes. Check pod status:
+              `kubectl get pods -n slm-prod -l app.kubernetes.io/component=api`
+            runbook_url: "https://github.com/abi-commits/enterprise-slm-agent/wiki/runbooks/api-service-down"
+
+        - alert: SLMKnowledgeServiceDown
+          expr: |
+            kube_deployment_status_replicas_available{
+              deployment="knowledge-service",
+              namespace="slm-prod"
+            } == 0
+          for: 2m
+          labels:
+            severity: critical
+            service: knowledge-service
+            cluster: slm-prod
+          annotations:
+            summary: "Knowledge service has zero available replicas"
+            description: >-
+              knowledge-service Deployment has 0 available replicas for 2+ minutes.
+              Check: `kubectl describe deployment knowledge-service -n slm-prod`
+
+        - alert: SLMInferenceServiceDown
+          expr: |
+            kube_deployment_status_replicas_available{
+              deployment="inference-service",
+              namespace="slm-prod"
+            } == 0
+          for: 2m
+          labels:
+            severity: critical
+            service: inference-service
+            cluster: slm-prod
+          annotations:
+            summary: "Inference service has zero available replicas"
+            description: >-
+              inference-service Deployment has 0 available replicas for 2+ minutes.
+
+        - alert: SLMQdrantDown
+          expr: |
+            kube_statefulset_status_replicas_ready{
+              statefulset="qdrant",
+              namespace="slm-prod"
+            } == 0
+          for: 2m
+          labels:
+            severity: critical
+            service: qdrant
+            cluster: slm-prod
+          annotations:
+            summary: "Qdrant has zero ready replicas"
+            description: >-
+              Qdrant StatefulSet has no ready pods. Vector search is unavailable.
+              Check: `kubectl describe sts qdrant -n slm-prod`
+
+    # -----------------------------------------------------------------------
+    # Request Latency
+    # -----------------------------------------------------------------------
+    - name: slm.latency
+      interval: 60s
+      rules:
+        - alert: SLMHighP95Latency
+          expr: |
+            histogram_quantile(
+              0.95,
+              sum(rate(slm_query_latency_seconds_bucket[5m])) by (le, service)
+            ) > 2.0
+          for: 5m
+          labels:
+            severity: warning
+            cluster: slm-prod
+          annotations:
+            summary: "P95 query latency above 2s (service={{ $labels.service }})"
+            description: >-
+              95th percentile query latency for {{ $labels.service }} has exceeded
+              2 seconds for 5 consecutive minutes.
+              Current P95: {{ $value | humanizeDuration }}
+
+        - alert: SLMHighP99Latency
+          expr: |
+            histogram_quantile(
+              0.99,
+              sum(rate(slm_query_latency_seconds_bucket[5m])) by (le, service)
+            ) > 5.0
+          for: 5m
+          labels:
+            severity: critical
+            cluster: slm-prod
+          annotations:
+            summary: "P99 query latency above 5s (service={{ $labels.service }})"
+            description: >-
+              99th percentile query latency for {{ $labels.service }} has exceeded
+              5 seconds for 5 consecutive minutes. SLA at risk.
+
+        - alert: SLMHighResponseTime
+          expr: |
+            histogram_quantile(
+              0.95,
+              sum(rate(slm_response_time_ms_bucket[5m])) by (le)
+            ) > 3000
+          for: 5m
+          labels:
+            severity: warning
+            cluster: slm-prod
+          annotations:
+            summary: "P95 end-to-end response time > 3000ms"
+            description: >-
+              P95 total response time (including all service hops) is {{ $value | humanize }}ms.
+
+    # -----------------------------------------------------------------------
+    # Authentication & Security
+    # -----------------------------------------------------------------------
+    - name: slm.security
+      interval: 60s
+      rules:
+        - alert: SLMAuthFailureSpike
+          expr: |
+            sum(rate(slm_auth_failures_total[5m])) by (reason) > 0.5
+          for: 5m
+          labels:
+            severity: warning
+            cluster: slm-prod
+          annotations:
+            summary: "Elevated authentication failure rate (reason={{ $labels.reason }})"
+            description: >-
+              Authentication failures are occurring at a rate of {{ $value | humanize }}/s
+              for reason='{{ $labels.reason }}' over the last 5 minutes.
+              This may indicate a brute-force attack or misconfigured client.
+
+        - alert: SLMAuthFailureCritical
+          expr: |
+            sum(rate(slm_auth_failures_total[5m])) > 2.0
+          for: 2m
+          labels:
+            severity: critical
+            cluster: slm-prod
+          annotations:
+            summary: "Critical auth failure rate — possible brute-force attack"
+            description: >-
+              Total auth failure rate exceeds 2/s. Check for brute-force
+              or credential stuffing attacks.
+              Rate: {{ $value | humanize }}/s
+
+    # -----------------------------------------------------------------------
+    # LLM Usage & Cost
+    # -----------------------------------------------------------------------
+    - name: slm.usage
+      interval: 60s
+      rules:
+        - alert: SLMHighLLMEscalationRate
+          expr: |
+            sum(rate(slm_llm_escalations_total[10m])) /
+            sum(rate(slm_total_requests[10m])) > 0.5
+          for: 10m
+          labels:
+            severity: warning
+            cluster: slm-prod
+          annotations:
+            summary: "More than 50% of requests are escalating to LLM"
+            description: >-
+              LLM escalation ratio is {{ $value | humanizePercentage }} over the last 10 minutes.
+              This indicates the optimizer is under-performing — review confidence threshold
+              or fine-tuned model performance.
+              Current CONFIDENCE_THRESHOLD: 0.6
+
+        - alert: SLMCostAccumulationHigh
+          expr: |
+            slm_cost_accumulated_usd > 100
+          for: 0m
+          labels:
+            severity: warning
+            cluster: slm-prod
+          annotations:
+            summary: "Accumulated LLM cost exceeds $100"
+            description: >-
+              Total accumulated LLM API cost has reached ${{ $value }}.
+              Review token usage and consider adjusting rate limits or caching.
+
+    # -----------------------------------------------------------------------
+    # Alembic / Database Migrations
+    # -----------------------------------------------------------------------
+    - name: slm.migrations
+      rules:
+        - alert: SLMAlembicJobFailed
+          expr: |
+            kube_job_status_failed{
+              namespace="slm-prod",
+              job_name=~"alembic-migrate-.*"
+            } > 0
+          for: 0m
+          labels:
+            severity: critical
+            cluster: slm-prod
+          annotations:
+            summary: "Alembic migration job failed"
+            description: >-
+              The Alembic pre-upgrade migration Job has failed.
+              Application deployment is blocked until migrations succeed.
+              Check: `kubectl logs -n slm-prod -l app.kubernetes.io/component=alembic`

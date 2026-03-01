@@ -1,11 +1,15 @@
 """Knowledge Service schemas."""
 
 from services.knowledge.schemas.documents import (
+    AsyncUploadResponse,
+    BulkUploadItem,
+    BulkUploadResponse,
     DeleteRequest,
     DeleteResponse,
     DocumentListItem,
     DocumentListResponse,
     DocumentStatusResponse,
+    JobStatusResponse,
     UploadRequest,
     UploadResponse,
 )
@@ -24,4 +28,8 @@ __all__ = [
     "SearchResponse",
     "UploadRequest",
     "UploadResponse",
+    "AsyncUploadResponse",
+    "JobStatusResponse",
+    "BulkUploadItem",
+    "BulkUploadResponse",
 ]

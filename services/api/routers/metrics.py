@@ -11,32 +11,27 @@ Endpoints:
 - GET /audit-log/{log_id} - Get specific audit log entry
 """
 
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
+import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from prometheus_client import make_asgi_app
 from sqlalchemy.ext.asyncio import AsyncSession
-import structlog
 
+from services.api import prometheus
 from services.api.database import (
-    AuditLog,
     count_audit_logs,
     get_db_session,
-    MetricRecord,
     query_audit_logs,
     store_audit_log,
     store_metric,
 )
 from services.api.schemas import (
     AuditLogEntry,
-    AuditLogFilter,
     AuditLogResponse,
     MetricRequest,
     MetricResponse,
-    MetricsSummary,
 )
-from services.api import prometheus
 
 logger = structlog.get_logger(__name__)
 
@@ -140,7 +135,7 @@ async def create_metric(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to record metric: {str(e)}",
-        )
+        ) from e
 
 
 @router.get("/summary", status_code=status.HTTP_200_OK)
@@ -167,7 +162,7 @@ async def get_metrics_summary(db: AsyncSession = Depends(get_db_session)) -> dic
             "cost_accumulated_usd": cost_accumulated,
             "cost_saved_vs_llm": cost_saved,
             "escalation_rate": escalation_rate_value,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         }
 
     except Exception as e:
@@ -175,7 +170,7 @@ async def get_metrics_summary(db: AsyncSession = Depends(get_db_session)) -> dic
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get metrics summary: {str(e)}",
-        )
+        ) from e
 
 
 # =============================================================================
@@ -185,11 +180,11 @@ async def get_metrics_summary(db: AsyncSession = Depends(get_db_session)) -> dic
 
 @audit_router.get("", response_model=AuditLogResponse, status_code=status.HTTP_200_OK)
 async def get_audit_logs(
-    user_id: Optional[str] = Query(None, description="Filter by user ID"),
-    action: Optional[str] = Query(None, description="Filter by action type"),
-    resource_type: Optional[str] = Query(None, description="Filter by resource type"),
-    start_date: Optional[datetime] = Query(None, description="Filter by start date"),
-    end_date: Optional[datetime] = Query(None, description="Filter by end date"),
+    user_id: str | None = Query(None, description="Filter by user ID"),
+    action: str | None = Query(None, description="Filter by action type"),
+    resource_type: str | None = Query(None, description="Filter by resource type"),
+    start_date: datetime | None = Query(None, description="Filter by start date"),
+    end_date: datetime | None = Query(None, description="Filter by end date"),
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(50, ge=1, le=100, description="Items per page"),
     db: AsyncSession = Depends(get_db_session),
@@ -266,7 +261,7 @@ async def get_audit_logs(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to retrieve audit logs: {str(e)}",
-        )
+        ) from e
 
 
 @audit_router.get("/{log_id}", response_model=AuditLogEntry, status_code=status.HTTP_200_OK)
@@ -310,4 +305,4 @@ async def get_audit_log(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to retrieve audit log: {str(e)}",
-        )
+        ) from e

@@ -1,0 +1,28 @@
+{{- if .Values.api.enabled }}
+##########################################################################
+# API Service — Kubernetes Service
+##########################################################################
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-service
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "enterprise-slm.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+  annotations:
+    # Prometheus scrape target — metrics are at /metrics/prometheus on the HTTP port
+    prometheus.io/scrape: "true"
+    prometheus.io/port: {{ .Values.api.service.metricsPort | quote }}
+    prometheus.io/path: {{ .Values.api.service.metricsPath | quote }}
+spec:
+  type: {{ .Values.api.service.type }}
+  selector:
+    app.kubernetes.io/component: api
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  ports:
+    - name: http
+      port: {{ .Values.api.service.port }}
+      targetPort: {{ .Values.api.service.targetPort }}
+      protocol: TCP
+{{- end }}

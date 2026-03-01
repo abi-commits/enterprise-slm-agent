@@ -1,13 +1,12 @@
 """User models for authentication and authorization."""
 
 from datetime import datetime
-from enum import Enum
-from typing import Optional
+from enum import StrEnum
 
 from pydantic import BaseModel, EmailStr, Field
 
 
-class UserRole(str, Enum):
+class UserRole(StrEnum):
     """User roles for RBAC."""
 
     ADMIN = "Admin"
@@ -22,7 +21,7 @@ class UserBase(BaseModel):
 
     email: EmailStr = Field(..., description="User email address")
     username: str = Field(..., min_length=3, max_length=50, description="Username")
-    full_name: Optional[str] = Field(None, description="User full name")
+    full_name: str | None = Field(None, description="User full name")
     role: UserRole = Field(UserRole.OPERATIONS, description="User role")
 
 
@@ -39,7 +38,7 @@ class UserInDB(BaseModel):
     email: EmailStr = Field(..., description="User email address")
     username: str = Field(..., description="Username")
     hashed_password: str = Field(..., description="Hashed password")
-    full_name: Optional[str] = Field(None, description="User full name")
+    full_name: str | None = Field(None, description="User full name")
     role: UserRole = Field(UserRole.OPERATIONS, description="User role")
     is_active: bool = Field(True, description="Whether user is active")
     created_at: datetime = Field(..., description="User creation timestamp")
@@ -66,9 +65,9 @@ class Token(BaseModel):
 class TokenData(BaseModel):
     """Token payload data model."""
 
-    user_id: Optional[str] = Field(None, description="User ID from token")
-    username: Optional[str] = Field(None, description="Username from token")
-    role: Optional[UserRole] = Field(None, description="User role from token")
+    user_id: str | None = Field(None, description="User ID from token")
+    username: str | None = Field(None, description="Username from token")
+    role: UserRole | None = Field(None, description="User role from token")
 
 
 class LoginRequest(BaseModel):

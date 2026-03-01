@@ -1,0 +1,86 @@
+{{- if and .Values.networkPolicies.enabled .Values.qdrant.enabled }}
+##########################################################################
+# NetworkPolicy — Qdrant
+#
+# Ingress:
+#   - REST (6333) + gRPC (6334) from knowledge-service
+#   - REST (6333) + gRPC (6334) from alembic job (for collection creation on init)
+#
+# Egress:
+#   - None within cluster (data is persisted to PVC)
+##########################################################################
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: qdrant-netpol
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "enterprise-slm.labels" . | nindent 4 }}
+    app.kubernetes.io/component: qdrant
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: qdrant
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  policyTypes:
+    - Ingress
+    - Egress
+
+  ingress:
+    # Allow from knowledge-service
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: knowledge
+              app.kubernetes.io/instance: {{ .Release.Name }}
+      ports:
+        - port: 6333
+          protocol: TCP
+        - port: 6334
+          protocol: TCP
+    # Allow from alembic job (collection bootstrapping)
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: alembic
+              app.kubernetes.io/instance: {{ .Release.Name }}
+      ports:
+        - port: 6333
+          protocol: TCP
+
+  egress: []   # Qdrant has no cluster-internal egress requirements
+{{- end }}
+
+{{- if and .Values.networkPolicies.enabled .Values.alembic.enabled }}
+---
+##########################################################################
+# NetworkPolicy — Alembic Job
+#
+# Ingress: none (batch job, no inbound traffic)
+# Egress: PostgreSQL private endpoint only
+##########################################################################
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: alembic-job-netpol
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "enterprise-slm.labels" . | nindent 4 }}
+    app.kubernetes.io/component: alembic
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: alembic
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  policyTypes:
+    - Ingress
+    - Egress
+
+  ingress: []
+
+  egress:
+    # → PostgreSQL private endpoint
+    - ports:
+        - port: 5432
+          protocol: TCP
+{{- end }}

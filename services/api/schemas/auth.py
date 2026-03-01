@@ -3,7 +3,6 @@
 Schemas for login, token validation, and user management.
 """
 
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -38,9 +37,9 @@ class ValidateTokenResponse(BaseModel):
     """Token validation response schema."""
 
     valid: bool = Field(..., description="Whether token is valid")
-    user_id: Optional[str] = Field(None, description="User ID if valid")
-    username: Optional[str] = Field(None, description="Username if valid")
-    role: Optional[str] = Field(None, description="User role if valid")
+    user_id: str | None = Field(None, description="User ID if valid")
+    username: str | None = Field(None, description="Username if valid")
+    role: str | None = Field(None, description="User role if valid")
 
 
 class UserResponse(BaseModel):
@@ -49,7 +48,7 @@ class UserResponse(BaseModel):
     id: str = Field(..., description="User ID")
     email: str = Field(..., description="User email")
     username: str = Field(..., description="Username")
-    full_name: Optional[str] = Field(None, description="Full name")
+    full_name: str | None = Field(None, description="Full name")
     role: str = Field(..., description="User role")
     is_active: bool = Field(..., description="Whether user is active")
 
@@ -60,7 +59,7 @@ class CreateUserRequest(BaseModel):
     email: str = Field(..., description="User email")
     username: str = Field(..., min_length=3, max_length=50, description="Username")
     password: str = Field(..., min_length=8, max_length=100, description="Password")
-    full_name: Optional[str] = Field(None, description="Full name")
+    full_name: str | None = Field(None, description="Full name")
     role: UserRole = Field(UserRole.OPERATIONS, description="User role")
 
 

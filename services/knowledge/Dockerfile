@@ -15,8 +15,8 @@ RUN pip install uv
 # Copy dependency files
 COPY pyproject.toml ./
 
-# Install dependencies using uv
-RUN uv pip install --system -r pyproject.toml
+# Install knowledge service dependencies (includes sentence-transformers, qdrant, doc parsing)
+RUN uv pip install --system ".[knowledge]"
 
 # Copy core and service code
 COPY core/ ./core/
@@ -26,6 +26,9 @@ COPY services/knowledge/ ./services/knowledge/
 # Set Python path
 ENV PYTHONPATH=/app:$PYTHONPATH
 
+# Default workers (override via UVICORN_WORKERS env var)
+ENV UVICORN_WORKERS=2
+
 # Expose port
 EXPOSE 8000
 
@@ -33,5 +36,5 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-# Run the service
-CMD ["uvicorn", "services.knowledge.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+# Run the service (no --reload in production)
+CMD ["sh", "-c", "uvicorn services.knowledge.main:app --host 0.0.0.0 --port 8000 --workers ${UVICORN_WORKERS}"]

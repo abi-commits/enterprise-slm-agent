@@ -1,0 +1,103 @@
+{{- if .Values.knowledge.enabled }}
+##########################################################################
+# Knowledge Service — Deployment
+# Runs Search + Ingestion with shared embedding model instance.
+# Memory request is higher than API because BGE + cross-encoder load into RAM.
+##########################################################################
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: knowledge-service
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "enterprise-slm.labels" . | nindent 4 }}
+    app.kubernetes.io/component: knowledge
+spec:
+  replicas: {{ .Values.knowledge.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: knowledge
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        {{- include "enterprise-slm.labels" . | nindent 8 }}
+        app.kubernetes.io/component: knowledge
+        azure.workload.identity/use: "true"
+      annotations:
+        checksum/values: {{ .Values | toJson | sha256sum }}
+    spec:
+      serviceAccountName: sa-knowledge-service
+      automountServiceAccountToken: true
+      securityContext:
+        {{- include "enterprise-slm.podSecurityContext" . | nindent 8 }}
+      nodeSelector:
+        agentpool: apppool
+      topologySpreadConstraints:
+        {{- include "enterprise-slm.topologySpread" (dict "component" "knowledge") | nindent 8 }}
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: knowledge-service
+          image: {{ include "enterprise-slm.image" (dict "acr" .Values.global.acr "repo" .Values.knowledge.image.repository "tag" .Values.global.imageTag) }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          securityContext:
+            {{- include "enterprise-slm.containerSecurityContext" . | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          env:
+            - name: ENVIRONMENT
+              value: {{ .Values.global.environment | quote }}
+            {{- range $key, $value := .Values.knowledge.env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+            # Secrets from Key Vault
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: slm-knowledge-runtime-secrets
+                  key: DATABASE_URL
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: slm-knowledge-runtime-secrets
+                  key: REDIS_URL
+            # Override REDIS_URL to use DB index 1 for knowledge service
+            # (api-service uses DB index 0)
+            # Note: set REDIS_URL to the full DSN with /1 suffix in terraform.tfvars
+            - name: HF_HOME
+              value: /model-cache/huggingface
+            - name: SENTENCE_TRANSFORMERS_HOME
+              value: /model-cache/sentence-transformers
+          livenessProbe:
+            {{- toYaml .Values.knowledge.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.knowledge.readinessProbe | nindent 12 }}
+          resources:
+            {{- toYaml .Values.knowledge.resources | nindent 12 }}
+          volumeMounts:
+            - name: secrets-store
+              mountPath: /mnt/secrets
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+            {{- if .Values.knowledge.modelCache.enabled }}
+            - name: model-cache
+              mountPath: /model-cache
+            {{- end }}
+      volumes:
+        {{- include "enterprise-slm.secretsVolume" (dict "secretProviderClass" "slm-knowledge-kv-secrets") | nindent 8 }}
+        {{- include "enterprise-slm.tmpVolume" . | nindent 8 }}
+        {{- if .Values.knowledge.modelCache.enabled }}
+        - name: model-cache
+          emptyDir:
+            sizeLimit: {{ .Values.knowledge.modelCache.sizeLimit }}
+        {{- end }}
+{{- end }}

@@ -1,7 +1,6 @@
 """Cross-encoder reranker using cross-encoder/ms-marco-MiniLM-L-6-v2."""
 
 import logging
-from typing import Optional
 
 import numpy as np
 import torch
@@ -12,7 +11,7 @@ from core.config.settings import get_settings
 logger = logging.getLogger(__name__)
 
 # Global model instance
-_reranker_model: Optional[CrossEncoder] = None
+_reranker_model: CrossEncoder | None = None
 
 
 def get_reranker_model() -> CrossEncoder:
@@ -27,7 +26,7 @@ def get_reranker_model() -> CrossEncoder:
     return _reranker_model
 
 
-def rerank_documents(query: str, documents: list[str], top_k: Optional[int] = None) -> list[tuple[int, float]]:
+def rerank_documents(query: str, documents: list[str], top_k: int | None = None) -> list[tuple[int, float]]:
     """Rerank documents based on relevance to the query using cross-encoder.
 
     Args:

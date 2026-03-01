@@ -15,17 +15,16 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 
 from core.config.settings import get_settings
-from core.security.jwt import create_access_token, verify_token, TokenData
+from core.security.jwt import create_access_token, verify_token
 from core.security.password import verify_password
+from services.api import prometheus, schemas
 from services.api.database import Database, db, get_db
-from services.api import schemas
 from services.api.schemas import (
     LoginRequest,
     LoginResponse,
     ValidateTokenRequest,
     ValidateTokenResponse,
 )
-from services.api import prometheus
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -86,19 +85,19 @@ async def login(
         data={"sub": user.id, "role": user.role.value},
         expires_delta=access_token_expires,
     )
-    
+
     # Create refresh token
     from core.security.jwt import create_refresh_token
     from services.api.database.refresh_token_db import store_refresh_token
-    
+
     refresh_token = create_refresh_token(user.id)
-    
-    # Store refresh token in database (7-day expiry)
+
+    # Store refresh token in database (expiry driven by REFRESH_TOKEN_EXPIRE_DAYS setting)
     await store_refresh_token(
         session=database.session,
         token=refresh_token,
         user_id=user.id,
-        expires_delta=timedelta(days=7),
+        expires_delta=timedelta(days=settings.refresh_token_expire_days),
     )
 
     return LoginResponse(
@@ -209,70 +208,70 @@ async def refresh_access_token(
 ) -> schemas.RefreshTokenResponse:
     """
     Refresh an access token using a refresh token.
-    
+
     This endpoint verifies the refresh token and issues a new access token
     and a new refresh token. The old refresh token is revoked to prevent reuse.
-    
+
     Args:
         request: Refresh token request containing the refresh token
         database: Database dependency
-        
+
     Returns:
         RefreshTokenResponse with new access and refresh tokens
-        
+
     Raises:
         HTTPException: If refresh token is invalid, expired, or revoked
     """
     from core.security.jwt import create_refresh_token
     from services.api.database.refresh_token_db import (
-        verify_refresh_token,
         revoke_refresh_token,
         store_refresh_token,
+        verify_refresh_token,
     )
-    
+
     # Verify refresh token
     user_id = await verify_refresh_token(database.session, request.refresh_token)
-    
+
     if not user_id:
         prometheus.record_auth_failure("invalid_refresh_token")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired refresh token",
         )
-    
+
     # Get user to verify they're still active
     user = await database.get_user_by_id(user_id)
-    
+
     if not user or not user.is_active:
         prometheus.record_auth_failure("user_not_found_or_inactive")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found or inactive",
         )
-    
+
     # Revoke old refresh token (token rotation for security)
     await revoke_refresh_token(database.session, request.refresh_token)
-    
+
     # Create new access token
     access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)
     access_token = create_access_token(
         data={"sub": user.id, "role": user.role.value},
         expires_delta=access_token_expires,
     )
-    
+
     # Create new refresh token
     new_refresh_token = create_refresh_token(user.id)
-    
-    # Store new refresh token
+
+    # Store new refresh token (expiry driven by REFRESH_TOKEN_EXPIRE_DAYS setting)
     await store_refresh_token(
         session=database.session,
         token=new_refresh_token,
         user_id=user.id,
-        expires_delta=timedelta(days=7),
+        expires_delta=timedelta(days=settings.refresh_token_expire_days),
     )
-    
+
     logger.info(f"Refreshed access token for user {user.id}")
-    
+
     return schemas.RefreshTokenResponse(
         access_token=access_token,
         refresh_token=new_refresh_token,
@@ -287,19 +286,19 @@ async def logout(
 ) -> schemas.LogoutResponse:
     """
     Logout a user by revoking their refresh token.
-    
+
     Args:
         request: Logout request containing the refresh token to revoke
         database: Database dependency
-        
+
     Returns:
         LogoutResponse with confirmation message
     """
     from services.api.database.refresh_token_db import revoke_refresh_token
-    
+
     # Revoke the refresh token
     revoked = await revoke_refresh_token(database.session, request.refresh_token)
-    
+
     if revoked:
         logger.info("User logged out successfully")
         return schemas.LogoutResponse(message="Logged out successfully")
@@ -316,23 +315,23 @@ async def logout_all_devices(
 ) -> schemas.LogoutResponse:
     """
     Logout from all devices by revoking all refresh tokens for the user.
-    
+
     Requires authentication via access token.
-    
+
     Args:
         current_user: Current authenticated user
         database: Database dependency
-        
+
     Returns:
         LogoutResponse with confirmation message
     """
     from services.api.database.refresh_token_db import revoke_user_tokens
-    
+
     # Revoke all refresh tokens for the user
     count = await revoke_user_tokens(database.session, current_user.user_id)
-    
+
     logger.info(f"User {current_user.user_id} logged out from all devices ({count} tokens revoked)")
-    
+
     return schemas.LogoutResponse(
         message=f"Logged out from all devices ({count} active sessions revoked)"
     )

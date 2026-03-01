@@ -18,7 +18,7 @@ import logging
 import random
 from contextvars import ContextVar
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 
@@ -30,19 +30,19 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 # Context variable for request ID propagation across async calls
-request_id_var: ContextVar[Optional[str]] = ContextVar('request_id', default=None)
+request_id_var: ContextVar[str | None] = ContextVar('request_id', default=None)
 
 
 @dataclass
 class RetryConfig:
     """Configuration for retry behavior."""
-    
+
     max_retries: int = 3
     base_delay: float = 0.5  # Base delay in seconds
     max_delay: float = 30.0  # Maximum delay in seconds
     exponential_base: float = 2.0  # Exponential backoff multiplier
     jitter: bool = True  # Add randomness to prevent thundering herd
-    
+
     # HTTP status codes that should trigger a retry
     retryable_status_codes: tuple[int, ...] = (
         408,  # Request Timeout
@@ -54,7 +54,7 @@ class RetryConfig:
     )
 
 
-def get_current_request_id() -> Optional[str]:
+def get_current_request_id() -> str | None:
     """Get the current request ID from context."""
     return request_id_var.get()
 
@@ -74,31 +74,31 @@ def calculate_backoff_delay(
     config: RetryConfig,
 ) -> float:
     """Calculate the delay before the next retry attempt.
-    
+
     Uses exponential backoff with optional jitter to prevent
     thundering herd problems.
-    
+
     Args:
         attempt: Current attempt number (0-indexed)
         config: Retry configuration
-        
+
     Returns:
         Delay in seconds before next retry
     """
     delay = config.base_delay * (config.exponential_base ** attempt)
     delay = min(delay, config.max_delay)
-    
+
     if config.jitter:
         # Add up to 25% jitter
         jitter_amount = delay * 0.25 * random.random()
         delay += jitter_amount
-    
+
     return delay
 
 
 class ServiceClient:
     """HTTP client for calling downstream services with retry and circuit breaker.
-    
+
     Features:
     - Retry with exponential backoff for transient failures
     - Circuit breaker to prevent cascading failures
@@ -110,7 +110,7 @@ class ServiceClient:
         base_url: str,
         service_name: str,
         timeout: float = 30.0,
-        retry_config: Optional[RetryConfig] = None,
+        retry_config: RetryConfig | None = None,
     ):
         """
         Initialize the service client.
@@ -126,9 +126,9 @@ class ServiceClient:
         self.timeout = timeout
         self.retry_config = retry_config or RetryConfig()
         self.circuit_breaker = CircuitBreaker()
-        self._client: Optional[httpx.AsyncClient] = None
+        self._client: httpx.AsyncClient | None = None
 
-    def _get_headers(self, headers: Optional[dict[str, str]] = None) -> dict[str, str]:
+    def _get_headers(self, headers: dict[str, str] | None = None) -> dict[str, str]:
         """Build headers with request ID propagation."""
         result = headers.copy() if headers else {}
         request_id = get_current_request_id()
@@ -153,20 +153,20 @@ class ServiceClient:
 
     def _is_retryable_error(self, error: Exception) -> bool:
         """Determine if an error should trigger a retry.
-        
+
         Args:
             error: The exception that occurred
-            
+
         Returns:
             True if the request should be retried
         """
         if isinstance(error, httpx.HTTPStatusError):
             return error.response.status_code in self.retry_config.retryable_status_codes
-        
+
         # Retry connection and timeout errors
         if isinstance(error, (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadTimeout)):
             return True
-        
+
         return False
 
     async def _execute_with_retry(
@@ -174,14 +174,14 @@ class ServiceClient:
         method: str,
         endpoint: str,
         **kwargs,
-    ) -> Optional[dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Execute an HTTP request with retry logic.
-        
+
         Args:
             method: HTTP method (GET, POST, etc.)
             endpoint: API endpoint path
             **kwargs: Additional arguments for the request
-            
+
         Returns:
             Response JSON data or None if all retries failed
         """
@@ -190,18 +190,18 @@ class ServiceClient:
                 f"Circuit breaker open for {self.service_name}, skipping request"
             )
             return None
-        
-        last_error: Optional[Exception] = None
-        
+
+        last_error: Exception | None = None
+
         for attempt in range(self.retry_config.max_retries + 1):
             try:
                 client = await self.get_client()
                 request_headers = self._get_headers(kwargs.pop("headers", None))
-                
+
                 if method.upper() == "POST":
                     response = await client.post(
-                        endpoint, 
-                        json=kwargs.get("data"), 
+                        endpoint,
+                        json=kwargs.get("data"),
                         headers=request_headers,
                     )
                 elif method.upper() == "GET":
@@ -212,19 +212,19 @@ class ServiceClient:
                     )
                 else:
                     raise ValueError(f"Unsupported method: {method}")
-                
+
                 response.raise_for_status()
-                
+
                 # Success - record and return
                 if self.circuit_breaker.state == CircuitState.HALF_OPEN:
                     self.circuit_breaker.half_open_calls += 1
                 self.circuit_breaker.record_success()
-                
+
                 return response.json()
-                
+
             except Exception as e:
                 last_error = e
-                
+
                 # Check if we should retry
                 if attempt < self.retry_config.max_retries and self._is_retryable_error(e):
                     delay = calculate_backoff_delay(attempt, self.retry_config)
@@ -235,10 +235,10 @@ class ServiceClient:
                     )
                     await asyncio.sleep(delay)
                     continue
-                
+
                 # Not retryable or no more retries
                 break
-        
+
         # All retries exhausted, record failure
         if isinstance(last_error, httpx.HTTPStatusError):
             logger.error(
@@ -255,7 +255,7 @@ class ServiceClient:
                 f"Unexpected error calling {self.service_name}: {last_error} "
                 f"after {self.retry_config.max_retries + 1} attempts"
             )
-        
+
         self.circuit_breaker.record_failure()
         return None
 
@@ -263,8 +263,8 @@ class ServiceClient:
         self,
         endpoint: str,
         data: dict[str, Any],
-        headers: Optional[dict[str, str]] = None,
-    ) -> Optional[dict[str, Any]]:
+        headers: dict[str, str] | None = None,
+    ) -> dict[str, Any] | None:
         """
         Make a POST request to the service with retry.
 
@@ -286,9 +286,9 @@ class ServiceClient:
     async def get(
         self,
         endpoint: str,
-        params: Optional[dict[str, Any]] = None,
-        headers: Optional[dict[str, str]] = None,
-    ) -> Optional[dict[str, Any]]:
+        params: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> dict[str, Any] | None:
         """
         Make a GET request to the service with retry.
 

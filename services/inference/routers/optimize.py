@@ -117,7 +117,7 @@ async def optimize_query(request: OptimizeRequest) -> OptimizeResponse:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to optimize query: {str(e)}",
-        )
+        ) from e
 
 
 @router.get(

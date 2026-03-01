@@ -1,0 +1,20 @@
+{{- if .Values.knowledge.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: knowledge-service
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "enterprise-slm.labels" . | nindent 4 }}
+    app.kubernetes.io/component: knowledge
+spec:
+  type: {{ .Values.knowledge.service.type }}
+  selector:
+    app.kubernetes.io/component: knowledge
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  ports:
+    - name: http
+      port: {{ .Values.knowledge.service.port }}
+      targetPort: {{ .Values.knowledge.service.targetPort }}
+      protocol: TCP
+{{- end }}

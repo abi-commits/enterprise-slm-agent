@@ -4,7 +4,7 @@ Schemas for metric recording, audit logging, and metrics summaries.
 """
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -23,10 +23,10 @@ class MetricRequest(BaseModel):
     escalation_flag: bool = Field(
         ..., description="Whether the request was escalated to LLM"
     )
-    latency_per_service: Optional[Dict[str, float]] = Field(
+    latency_per_service: dict[str, float] | None = Field(
         default=None, description="Latency per service in milliseconds"
     )
-    token_usage: Optional[Dict[str, int]] = Field(
+    token_usage: dict[str, int] | None = Field(
         default=None,
         description="Token usage breakdown",
         examples=[{"prompt_tokens": 100, "completion_tokens": 50}],
@@ -41,7 +41,7 @@ class MetricResponse(BaseModel):
 
     success: bool = Field(..., description="Whether the metric was stored successfully")
     message: str = Field(..., description="Response message")
-    metric_id: Optional[int] = Field(default=None, description="Stored metric ID")
+    metric_id: int | None = Field(default=None, description="Stored metric ID")
 
 
 class AuditLogEntry(BaseModel):
@@ -51,19 +51,19 @@ class AuditLogEntry(BaseModel):
     user_id: str = Field(..., description="User identifier")
     action: str = Field(..., description="Action performed")
     resource_type: str = Field(..., description="Type of resource accessed")
-    resource_id: Optional[str] = Field(default=None, description="Resource identifier")
-    details: Optional[Dict[str, Any]] = Field(
+    resource_id: str | None = Field(default=None, description="Resource identifier")
+    details: dict[str, Any] | None = Field(
         default=None, description="Additional details"
     )
-    ip_address: Optional[str] = Field(default=None, description="Client IP address")
-    user_agent: Optional[str] = Field(default=None, description="Client user agent")
+    ip_address: str | None = Field(default=None, description="Client IP address")
+    user_agent: str | None = Field(default=None, description="Client user agent")
     timestamp: datetime = Field(..., description="Timestamp of the action")
 
 
 class AuditLogResponse(BaseModel):
     """Schema for audit log list response."""
 
-    logs: List[AuditLogEntry] = Field(..., description="List of audit log entries")
+    logs: list[AuditLogEntry] = Field(..., description="List of audit log entries")
     total: int = Field(..., description="Total number of matching logs")
     page: int = Field(..., description="Current page number")
     page_size: int = Field(..., description="Number of items per page")
@@ -73,15 +73,15 @@ class AuditLogResponse(BaseModel):
 class AuditLogFilter(BaseModel):
     """Schema for audit log filtering."""
 
-    user_id: Optional[str] = Field(default=None, description="Filter by user ID")
-    action: Optional[str] = Field(default=None, description="Filter by action")
-    resource_type: Optional[str] = Field(
+    user_id: str | None = Field(default=None, description="Filter by user ID")
+    action: str | None = Field(default=None, description="Filter by action")
+    resource_type: str | None = Field(
         default=None, description="Filter by resource type"
     )
-    start_date: Optional[datetime] = Field(
+    start_date: datetime | None = Field(
         default=None, description="Filter by start date"
     )
-    end_date: Optional[datetime] = Field(default=None, description="Filter by end date")
+    end_date: datetime | None = Field(default=None, description="Filter by end date")
     page: int = Field(default=1, ge=1, description="Page number")
     page_size: int = Field(
         default=50, ge=1, le=100, description="Number of items per page"

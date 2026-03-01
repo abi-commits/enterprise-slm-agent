@@ -1,0 +1,357 @@
+##########################################################################
+# kube-prometheus-stack — Production Values
+#
+# Chart: prometheus-community/kube-prometheus-stack
+# Install:
+#   helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+#   helm repo update
+#   helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
+#     -f helm/observability/kube-prometheus-stack/values.yaml \
+#     --namespace monitoring --create-namespace --version 67.x \
+#     --wait --timeout 10m
+##########################################################################
+
+# ---------------------------------------------------------------------------
+# Prometheus
+# ---------------------------------------------------------------------------
+prometheus:
+  enabled: true
+  prometheusSpec:
+    # Scrape interval — 15s for production; increase to 30s if cardinality is high
+    scrapeInterval: "15s"
+    evaluationInterval: "15s"
+
+    # Retention — 15 days in-cluster; long-term archival handled by AzureMonitor or Thanos
+    retention: 15d
+    retentionSize: "45GB"
+
+    # Discover ServiceMonitors and PodMonitors across all namespaces
+    serviceMonitorSelectorNilUsesHelmValues: false
+    serviceMonitorSelector: {}
+    serviceMonitorNamespaceSelector: {}
+    podMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelector: {}
+    podMonitorNamespaceSelector: {}
+    ruleSelectorNilUsesHelmValues: false
+    ruleSelector: {}
+    ruleNamespaceSelector: {}
+
+    # Storage — Azure Premium SSD
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: managed-premium
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 50Gi
+
+    # Resource limits
+    resources:
+      requests:
+        cpu: 200m
+        memory: 1Gi
+      limits:
+        cpu: 1000m
+        memory: 2Gi
+
+    # Run on app pool nodes
+    nodeSelector:
+      agentpool: apppool
+
+    # OTLP receiver — allows application pods to push metrics via OTLP
+    enableFeatures:
+      - otlp-write-receiver
+
+    # External labels — added to all time series for cross-cluster identification
+    externalLabels:
+      cluster: slm-prod
+      environment: production
+
+    # Additional scrape configs for services not using ServiceMonitors
+    additionalScrapeConfigs: []
+
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 1000
+      runAsGroup: 2000
+      fsGroup: 2000
+      seccompProfile:
+        type: RuntimeDefault
+
+  # Prometheus service — expose for Grafana datasource
+  service:
+    type: ClusterIP
+    port: 9090
+
+# ---------------------------------------------------------------------------
+# Alertmanager
+# ---------------------------------------------------------------------------
+alertmanager:
+  enabled: true
+  alertmanagerSpec:
+    # Storage for silences/inhibitions state
+    storage:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: managed-premium
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 5Gi
+
+    nodeSelector:
+      agentpool: apppool
+
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
+
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 1000
+      runAsGroup: 2000
+      fsGroup: 2000
+      seccompProfile:
+        type: RuntimeDefault
+
+  # Alertmanager configuration — webhook receiver
+  # The ALERT_WEBHOOK_URL secret is seeded into Key Vault post tf apply
+  config:
+    global:
+      resolve_timeout: 5m
+
+    route:
+      group_by:
+        - alertname
+        - cluster
+        - service
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 12h
+      receiver: "slm-webhook"
+      routes:
+        # Critical alerts fire immediately
+        - matchers:
+            - severity =~ "critical"
+          group_wait: 0s
+          repeat_interval: 1h
+          receiver: "slm-webhook"
+        # Warnings batched normally
+        - matchers:
+            - severity =~ "warning"
+          receiver: "slm-webhook"
+        # Watchdog — needed for dead-man's switch monitoring
+        - matchers:
+            - alertname = "Watchdog"
+          receiver: "null"
+
+    receivers:
+      - name: "null"
+
+      - name: "slm-webhook"
+        webhook_configs:
+          - url_file: /etc/alertmanager/secrets/alert-webhook-url/ALERT_WEBHOOK_URL
+            send_resolved: true
+            http_config:
+              tls_config:
+                insecure_skip_verify: false
+
+    inhibit_rules:
+      # Silence warnings when critical fires for same alert+instance
+      - source_matchers:
+          - severity = "critical"
+        target_matchers:
+          - severity = "warning"
+        equal:
+          - alertname
+          - cluster
+          - service
+
+  # Mount the alert-webhook-url secret (seeded into Key Vault then synced as K8s Secret)
+  alertmanagerSpec:
+    secrets:
+      - alert-webhook-url
+
+# ---------------------------------------------------------------------------
+# Grafana
+# ---------------------------------------------------------------------------
+grafana:
+  enabled: true
+
+  # Admin password — from K8s secret created post-deploy
+  # Create secret: kubectl -n monitoring create secret generic grafana-admin \
+  #   --from-literal=admin-user=admin \
+  #   --from-literal=admin-password="$(openssl rand -hex 16)"
+  admin:
+    existingSecret: "grafana-admin"
+    userKey: admin-user
+    passwordKey: admin-password
+
+  nodeSelector:
+    agentpool: apppool
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  # Persistent storage for dashboards/settings
+  persistence:
+    enabled: true
+    storageClassName: managed-premium
+    size: 10Gi
+
+  # Grafana sidecar — auto-loads ConfigMap dashboards from any namespace
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      labelValue: "1"
+      searchNamespace: ALL
+      folderAnnotation: grafana_folder
+      provider:
+        foldersFromFilesStructure: true
+    datasources:
+      enabled: true
+      label: grafana_datasource
+
+  # Pre-configured datasources
+  additionalDataSources:
+    # Loki — log aggregation
+    - name: Loki
+      type: loki
+      url: http://loki.monitoring.svc.cluster.local:3100
+      access: proxy
+      isDefault: false
+      jsonData:
+        maxLines: 1000
+        derivedFields:
+          # Link trace IDs in logs to Tempo
+          - datasourceUid: tempo
+            matcherRegex: "traceID=(\\w+)"
+            name: TraceID
+            url: "$${__value.raw}"
+
+    # Tempo — distributed tracing
+    - name: Tempo
+      type: tempo
+      uid: tempo
+      url: http://tempo.monitoring.svc.cluster.local:3100
+      access: proxy
+      isDefault: false
+      jsonData:
+        tracesToLogs:
+          datasourceUid: loki
+          tags:
+            - key: "service.name"
+              value: "service"
+        serviceMap:
+          datasourceUid: prometheus
+        nodeGraph:
+          enabled: true
+
+  # Grafana ini overrides
+  grafana.ini:
+    server:
+      root_url: "%(protocol)s://%(domain)s/grafana"
+      serve_from_sub_path: true
+    security:
+      disable_gravatar: true
+      cookie_secure: true
+      strict_transport_security: true
+    analytics:
+      reporting_enabled: false
+      check_for_updates: false
+    log:
+      level: warn
+
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 472    # Grafana default UID
+    runAsGroup: 472
+    fsGroup: 472
+    seccompProfile:
+      type: RuntimeDefault
+
+# ---------------------------------------------------------------------------
+# Node Exporter — runs on ALL nodes including GPU and system pools
+# ---------------------------------------------------------------------------
+nodeExporter:
+  enabled: true
+
+prometheus-node-exporter:
+  tolerations:
+    # Tolerate system pool taint
+    - key: "CriticalAddonsOnly"
+      operator: "Exists"
+      effect: "NoSchedule"
+    # Tolerate GPU pool taint
+    - key: "nvidia.com/gpu"
+      operator: "Equal"
+      value: "present"
+      effect: "NoSchedule"
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+# ---------------------------------------------------------------------------
+# kube-state-metrics
+# ---------------------------------------------------------------------------
+kubeStateMetrics:
+  enabled: true
+
+kube-state-metrics:
+  nodeSelector:
+    agentpool: apppool
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65534
+    seccompProfile:
+      type: RuntimeDefault
+
+# ---------------------------------------------------------------------------
+# Default rules — keep all standard K8s alerting rules active
+# ---------------------------------------------------------------------------
+defaultRules:
+  create: true
+  rules:
+    alertmanager: true
+    etcd: false          # managed AKS — no etcd access
+    configReloaders: true
+    general: true
+    k8s: true
+    kubeApiserver: true
+    kubeApiserverAvailability: true
+    kubeApiserverSlos: true
+    kubelet: true
+    kubeProxy: false     # Azure CNI — no kube-proxy
+    kubeSchedulerAlerting: false
+    kubeSchedulerRecording: false
+    kubernetesApps: true
+    kubernetesResources: true
+    kubernetesStorage: true
+    kubernetesSystem: true
+    node: true
+    prometheus: true
+    prometheusOperator: true

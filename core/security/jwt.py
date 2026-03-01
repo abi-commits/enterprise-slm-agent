@@ -2,8 +2,7 @@
 
 import hashlib
 import secrets
-from datetime import datetime, timedelta, timezone
-from typing import Optional
+from datetime import UTC, datetime, timedelta
 
 from jose import JWTError, jwt
 from pydantic import BaseModel
@@ -18,11 +17,11 @@ class TokenData(BaseModel):
 
     sub: str  # User ID
     role: str  # User role
-    exp: Optional[datetime] = None
+    exp: datetime | None = None
     token_type: str = "access"  # "access" or "refresh"
 
 
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
     """
     Create a JWT access token.
 
@@ -36,9 +35,9 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     to_encode = data.copy()
 
     if expires_delta:
-        expire = datetime.now(timezone.utc) + expires_delta
+        expire = datetime.now(UTC) + expires_delta
     else:
-        expire = datetime.now(timezone.utc) + timedelta(
+        expire = datetime.now(UTC) + timedelta(
             minutes=settings.access_token_expire_minutes
         )
 
@@ -53,10 +52,10 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     return encoded_jwt
 
 
-def create_refresh_token(user_id: str, expires_delta: Optional[timedelta] = None) -> str:
+def create_refresh_token(user_id: str, expires_delta: timedelta | None = None) -> str:
     """
     Create a random refresh token (not a JWT, just a secure random string).
-        
+
     Returns:
         The refresh token string (64 hex characters)
     """
@@ -71,7 +70,7 @@ def hash_refresh_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
-def verify_token(token: str) -> Optional[TokenData]:
+def verify_token(token: str) -> TokenData | None:
     """
     Verify and decode a JWT access token.
 
@@ -88,13 +87,13 @@ def verify_token(token: str) -> Optional[TokenData]:
             algorithms=[settings.jwt_algorithm],
         )
 
-        sub: Optional[str] = payload.get("sub")
-        role: Optional[str] = payload.get("role")
+        sub: str | None = payload.get("sub")
+        role: str | None = payload.get("role")
         token_type: str = payload.get("token_type", "access")
 
         if sub is None or role is None:
             return None
-        
+
         # Only accept access tokens here
         if token_type != "access":
             return None
@@ -104,7 +103,7 @@ def verify_token(token: str) -> Optional[TokenData]:
         return None
 
 
-def decode_token(token: str) -> Optional[dict]:
+def decode_token(token: str) -> dict | None:
     """
     Decode a JWT token without verification (for debugging).
 

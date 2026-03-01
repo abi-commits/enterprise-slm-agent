@@ -2,7 +2,6 @@
 
 import json
 import logging
-from typing import Optional
 
 import httpx
 import nltk
@@ -10,7 +9,6 @@ from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
 
 from core.config.settings import get_settings
-
 from services.inference.optimizer.prompts import build_optimization_prompt
 
 logger = logging.getLogger(__name__)
@@ -105,7 +103,7 @@ class QueryOptimizerModel:
     async def optimize_query(
         self,
         query: str,
-        user_context: Optional[str] = None
+        user_context: str | None = None
     ) -> dict:
         """Optimize a query using the Qwen model.
 
@@ -288,7 +286,7 @@ class QueryOptimizerModel:
 
 
 # Global model instance
-_model: Optional[QueryOptimizerModel] = None
+_model: QueryOptimizerModel | None = None
 
 
 async def get_model() -> QueryOptimizerModel:
