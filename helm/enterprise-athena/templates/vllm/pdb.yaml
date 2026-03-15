@@ -1,0 +1,28 @@
+{{- if .Values.vllm.enabled }}
+##########################################################################
+# vLLM — PodDisruptionBudget
+#
+# GPU pods take 2–4 minutes to reload the model from PVC during startup.
+# minAvailable: 0 allows voluntary disruptions (node drain, AKS upgrades)
+# without blocking — but you lose LLM availability during the rolling window.
+#
+# Set minAvailable: 1 only if GPU pool has >= 2 nodes, otherwise node drain
+# will deadlock.  Keeping it at 0 is the safe default for a single-GPU pool.
+##########################################################################
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: vllm-pdb
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "athena.labels" . | nindent 4 }}
+    app.kubernetes.io/component: vllm
+spec:
+  # minAvailable: 0 ensures GPU node drain is never blocked
+  # Promote to 1 when GPU pool has >= 2 nodes
+  minAvailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: vllm
+      app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end }}

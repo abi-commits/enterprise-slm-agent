@@ -22,12 +22,12 @@ class Settings(BaseSettings):
     log_level: str = Field(default="INFO", description="Logging level")
 
     # PostgreSQL Configuration
-    postgres_user: str = Field(default="slm_user", description="PostgreSQL username")
-    postgres_password: str = Field(default="slm_password", description="PostgreSQL password")
-    postgres_db: str = Field(default="slm_knowledge", description="PostgreSQL database name")
+    postgres_user: str = Field(default="athena_user", description="PostgreSQL username")
+    postgres_password: str = Field(default="athena_password", description="PostgreSQL password")
+    postgres_db: str = Field(default="athena_knowledge", description="PostgreSQL database name")
     postgres_port: int = Field(default=5432, description="PostgreSQL port")
     database_url: str = Field(
-        default="postgresql+asyncpg://slm_user:slm_password@postgres:5432/slm_knowledge",
+        default="postgresql+asyncpg://athena_user:athena_password@postgres:5432/athena_knowledge",
         description="Database connection URL (async)",
     )
 
@@ -162,7 +162,7 @@ class Settings(BaseSettings):
         description="OpenTelemetry OTLP exporter endpoint",
     )
     otel_service_name: str = Field(
-        default="slm-knowledge-copilot",
+        default="athena-knowledge-copilot",
         description="OpenTelemetry service name",
     )
 

@@ -1,8 +1,8 @@
 ##########################################################################
-# PrometheusRule — SLM Application Alerts
+# PrometheusRule — Athena Application Alerts
 #
 # Custom alert rules based on the application-specific metrics emitted by
-# the API service (slm_* metrics from services/api/prometheus.py).
+# the API service (athena_* metrics from services/api/prometheus.py).
 #
 # All alerts use a severity label:
 #   critical → fires immediately, repeats every 1h, pages on-call
@@ -11,101 +11,101 @@
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
-  name: slm-application-rules
+  name: athena-application-rules
   namespace: monitoring
   labels:
-    app.kubernetes.io/name: enterprise-slm
+    app.kubernetes.io/name: enterprise-athena
     release: kube-prometheus-stack
 spec:
   groups:
     # -----------------------------------------------------------------------
     # Service Availability
     # -----------------------------------------------------------------------
-    - name: slm.availability
+    - name: athena.availability
       interval: 30s
       rules:
-        - alert: SLMApiServiceDown
+        - alert: AthenaApiServiceDown
           expr: |
-            absent(up{job="api-service", namespace="slm-prod"} == 1)
+            absent(up{job="api-service", namespace="athena-prod"} == 1)
           for: 2m
           labels:
             severity: critical
             service: api-service
-            cluster: slm-prod
+            cluster: athena-prod
           annotations:
             summary: "API service is unreachable"
             description: >-
               No healthy API service pods have been responding to Prometheus
               scrapes for more than 2 minutes. Check pod status:
-              `kubectl get pods -n slm-prod -l app.kubernetes.io/component=api`
-            runbook_url: "https://github.com/abi-commits/enterprise-slm-agent/wiki/runbooks/api-service-down"
+              `kubectl get pods -n athena-prod -l app.kubernetes.io/component=api`
+            runbook_url: "https://github.com/abi-commits/enterprise-athena-agent/wiki/runbooks/api-service-down"
 
-        - alert: SLMKnowledgeServiceDown
+        - alert: AthenaKnowledgeServiceDown
           expr: |
             kube_deployment_status_replicas_available{
               deployment="knowledge-service",
-              namespace="slm-prod"
+              namespace="athena-prod"
             } == 0
           for: 2m
           labels:
             severity: critical
             service: knowledge-service
-            cluster: slm-prod
+            cluster: athena-prod
           annotations:
             summary: "Knowledge service has zero available replicas"
             description: >-
               knowledge-service Deployment has 0 available replicas for 2+ minutes.
-              Check: `kubectl describe deployment knowledge-service -n slm-prod`
+              Check: `kubectl describe deployment knowledge-service -n athena-prod`
 
-        - alert: SLMInferenceServiceDown
+        - alert: AthenaInferenceServiceDown
           expr: |
             kube_deployment_status_replicas_available{
               deployment="inference-service",
-              namespace="slm-prod"
+              namespace="athena-prod"
             } == 0
           for: 2m
           labels:
             severity: critical
             service: inference-service
-            cluster: slm-prod
+            cluster: athena-prod
           annotations:
             summary: "Inference service has zero available replicas"
             description: >-
               inference-service Deployment has 0 available replicas for 2+ minutes.
 
-        - alert: SLMQdrantDown
+        - alert: AthenaQdrantDown
           expr: |
             kube_statefulset_status_replicas_ready{
               statefulset="qdrant",
-              namespace="slm-prod"
+              namespace="athena-prod"
             } == 0
           for: 2m
           labels:
             severity: critical
             service: qdrant
-            cluster: slm-prod
+            cluster: athena-prod
           annotations:
             summary: "Qdrant has zero ready replicas"
             description: >-
               Qdrant StatefulSet has no ready pods. Vector search is unavailable.
-              Check: `kubectl describe sts qdrant -n slm-prod`
+              Check: `kubectl describe sts qdrant -n athena-prod`
 
     # -----------------------------------------------------------------------
     # Request Latency
     # -----------------------------------------------------------------------
-    - name: slm.latency
+    - name: athena.latency
       interval: 60s
       rules:
-        - alert: SLMHighP95Latency
+        - alert: AthenaHighP95Latency
           expr: |
             histogram_quantile(
               0.95,
-              sum(rate(slm_query_latency_seconds_bucket[5m])) by (le, service)
+              sum(rate(athena_query_latency_seconds_bucket[5m])) by (le, service)
             ) > 2.0
           for: 5m
           labels:
             severity: warning
-            cluster: slm-prod
+            cluster: athena-prod
           annotations:
             summary: "P95 query latency above 2s (service={{ $labels.service }})"
             description: >-
@@ -113,32 +113,32 @@ spec:
               2 seconds for 5 consecutive minutes.
               Current P95: {{ $value | humanizeDuration }}
 
-        - alert: SLMHighP99Latency
+        - alert: AthenaHighP99Latency
           expr: |
             histogram_quantile(
               0.99,
-              sum(rate(slm_query_latency_seconds_bucket[5m])) by (le, service)
+              sum(rate(athena_query_latency_seconds_bucket[5m])) by (le, service)
             ) > 5.0
           for: 5m
           labels:
             severity: critical
-            cluster: slm-prod
+            cluster: athena-prod
           annotations:
             summary: "P99 query latency above 5s (service={{ $labels.service }})"
             description: >-
               99th percentile query latency for {{ $labels.service }} has exceeded
               5 seconds for 5 consecutive minutes. SLA at risk.
 
-        - alert: SLMHighResponseTime
+        - alert: AthenaHighResponseTime
           expr: |
             histogram_quantile(
               0.95,
-              sum(rate(slm_response_time_ms_bucket[5m])) by (le)
+              sum(rate(athena_response_time_ms_bucket[5m])) by (le)
             ) > 3000
           for: 5m
           labels:
             severity: warning
-            cluster: slm-prod
+            cluster: athena-prod
           annotations:
             summary: "P95 end-to-end response time > 3000ms"
             description: >-
@@ -147,16 +147,16 @@ spec:
     # -----------------------------------------------------------------------
     # Authentication & Security
     # -----------------------------------------------------------------------
-    - name: slm.security
+    - name: athena.security
       interval: 60s
       rules:
-        - alert: SLMAuthFailureSpike
+        - alert: AthenaAuthFailureSpike
           expr: |
-            sum(rate(slm_auth_failures_total[5m])) by (reason) > 0.5
+            sum(rate(athena_auth_failures_total[5m])) by (reason) > 0.5
           for: 5m
           labels:
             severity: warning
-            cluster: slm-prod
+            cluster: athena-prod
           annotations:
             summary: "Elevated authentication failure rate (reason={{ $labels.reason }})"
             description: >-
@@ -164,13 +164,13 @@ spec:
               for reason='{{ $labels.reason }}' over the last 5 minutes.
               This may indicate a brute-force attack or misconfigured client.
 
-        - alert: SLMAuthFailureCritical
+        - alert: AthenaAuthFailureCritical
           expr: |
-            sum(rate(slm_auth_failures_total[5m])) > 2.0
+            sum(rate(athena_auth_failures_total[5m])) > 2.0
           for: 2m
           labels:
             severity: critical
-            cluster: slm-prod
+            cluster: athena-prod
           annotations:
             summary: "Critical auth failure rate — possible brute-force attack"
             description: >-
@@ -181,17 +181,17 @@ spec:
     # -----------------------------------------------------------------------
     # LLM Usage & Cost
     # -----------------------------------------------------------------------
-    - name: slm.usage
+    - name: athena.usage
       interval: 60s
       rules:
-        - alert: SLMHighLLMEscalationRate
+        - alert: AthenaHighLLMEscalationRate
           expr: |
-            sum(rate(slm_llm_escalations_total[10m])) /
-            sum(rate(slm_total_requests[10m])) > 0.5
+            sum(rate(athena_llm_escalations_total[10m])) /
+            sum(rate(athena_total_requests[10m])) > 0.5
           for: 10m
           labels:
             severity: warning
-            cluster: slm-prod
+            cluster: athena-prod
           annotations:
             summary: "More than 50% of requests are escalating to LLM"
             description: >-
@@ -200,13 +200,13 @@ spec:
               or fine-tuned model performance.
               Current CONFIDENCE_THRESHOLD: 0.6
 
-        - alert: SLMCostAccumulationHigh
+        - alert: AthenaCostAccumulationHigh
           expr: |
-            slm_cost_accumulated_usd > 100
+            athena_cost_accumulated_usd > 100
           for: 0m
           labels:
             severity: warning
-            cluster: slm-prod
+            cluster: athena-prod
           annotations:
             summary: "Accumulated LLM cost exceeds $100"
             description: >-
@@ -216,21 +216,21 @@ spec:
     # -----------------------------------------------------------------------
     # Alembic / Database Migrations
     # -----------------------------------------------------------------------
-    - name: slm.migrations
+    - name: athena.migrations
       rules:
-        - alert: SLMAlembicJobFailed
+        - alert: AthenaAlembicJobFailed
           expr: |
             kube_job_status_failed{
-              namespace="slm-prod",
+              namespace="athena-prod",
               job_name=~"alembic-migrate-.*"
             } > 0
           for: 0m
           labels:
             severity: critical
-            cluster: slm-prod
+            cluster: athena-prod
           annotations:
             summary: "Alembic migration job failed"
             description: >-
               The Alembic pre-upgrade migration Job has failed.
               Application deployment is blocked until migrations succeed.
-              Check: `kubectl logs -n slm-prod -l app.kubernetes.io/component=alembic`
+              Check: `kubectl logs -n athena-prod -l app.kubernetes.io/component=alembic`

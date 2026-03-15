@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ---------------------------------------------------------------------------
-# deploy.sh — Enterprise SLM Observability Stack Deployment
+# deploy.sh — Enterprise Athena Observability Stack Deployment
 #
 # Installs the full observability stack into the 'monitoring' namespace:
 #   1. Helm repos
@@ -11,26 +11,26 @@
 #   6. Promtail  (log shipper DaemonSet)
 #   7. Tempo  (distributed tracing)
 #   8. ServiceMonitors, PrometheusRules, Grafana dashboard ConfigMaps
-#   9. OTEL env-var patch on enterprise-slm deployments
+#   9. OTEL env-var patch on enterprise-athena deployments
 #
 # Prerequisites:
 #   - kubectl context pointing at the target AKS cluster
 #   - helm >= 3.14, kubectl >= 1.29
-#   - Azure Key Vault secrets sync already handled by the enterprise-slm chart
+#   - Azure Key Vault secrets sync already handled by the enterprise-athena chart
 #     (SecretProviderClass + CSI driver); the alert webhook URL must be
 #     pre-staged in Key Vault as:  kv-<prefix>-prod/ALERT_WEBHOOK_URL
 #
 # Usage:
 #   chmod +x deploy.sh
-#   NAMESPACE=monitoring CLUSTER_NAME=slm-aks-prod ./deploy.sh
+#   NAMESPACE=monitoring CLUSTER_NAME=athena-aks-prod ./deploy.sh
 #   SKIP_SECRETS=true ./deploy.sh        # skip secret re-creation if exists
 # ---------------------------------------------------------------------------
 set -euo pipefail
 
 # ── Configurable defaults ──────────────────────────────────────────────────
 NAMESPACE="${NAMESPACE:-monitoring}"
-APP_NAMESPACE="${APP_NAMESPACE:-slm-prod}"
-CLUSTER_NAME="${CLUSTER_NAME:-slm-aks-prod}"
+APP_NAMESPACE="${APP_NAMESPACE:-athena-prod}"
+CLUSTER_NAME="${CLUSTER_NAME:-athena-aks-prod}"
 SKIP_SECRETS="${SKIP_SECRETS:-false}"
 
 # Pinned chart versions — update via `helm search repo <repo/chart> --versions`
@@ -188,9 +188,9 @@ apply_crd_resources() {
   ok "Grafana dashboards applied"
 }
 
-# ── 9. Patch enterprise-slm deployments with OTEL endpoint ────────────────
+# ── 9. Patch enterprise-athena deployments with OTEL endpoint ────────────────
 patch_otel_env() {
-  log "Patching enterprise-slm deployments with OTEL_EXPORTER_OTLP_ENDPOINT..."
+  log "Patching enterprise-athena deployments with OTEL_EXPORTER_OTLP_ENDPOINT..."
   local endpoint="http://tempo.${NAMESPACE}.svc.cluster.local:4317"
   local deployments=("api-deployment" "knowledge-deployment" "inference-deployment")
 
@@ -295,7 +295,7 @@ main() {
   fi
 
   echo -e "${BOLD}═══════════════════════════════════════════════════${NC}"
-  echo -e "${BOLD}  Enterprise SLM — Observability Stack Deployment${NC}"
+  echo -e "${BOLD}  Enterprise Athena — Observability Stack Deployment${NC}"
   echo -e "${BOLD}═══════════════════════════════════════════════════${NC}"
   echo "  Namespace : ${NAMESPACE}"
   echo "  App NS    : ${APP_NAMESPACE}"

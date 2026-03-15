@@ -1,11 +1,13 @@
 """Inference Service - Consolidated FastAPI application entry point.
 
 This service consolidates the Query Optimizer and Generator services into
-a single inference service. It uses Qwen-2.5 SLM for query optimization
+a single inference service. It uses Qwen-2.5 Athena model for query optimization
 and provides LLM-based answer generation with template fallback.
 
 The service shares a single vLLM client between the optimizer and generator.
 """
+
+# Note: Athena (AI model) is the core inference component
 
 import time
 from contextlib import asynccontextmanager
@@ -100,8 +102,8 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Inference Service",
     description=(
-        "Consolidated Inference Service for Enterprise SLM-First Knowledge Copilot. "
-        "Combines Query Optimization (Qwen-2.5 SLM) and Answer Generation (LLM/template)."
+        "Consolidated Inference Service for Athena - Strategic Knowledge Copilot. "
+        "Combines Query Optimization (Qwen-2.5 Athena) and Answer Generation (LLM/template)."
     ),
     version="1.0.0",
     lifespan=lifespan,

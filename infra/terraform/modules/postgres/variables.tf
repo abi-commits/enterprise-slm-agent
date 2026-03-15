@@ -15,7 +15,7 @@ variable "location" {
 }
 
 variable "name_prefix" {
-  description = "Short prefix for resource names (e.g. 'slm-prod')."
+  description = "Short prefix for resource names (e.g. 'athena-prod')."
   type        = string
   nullable    = false
 
@@ -82,7 +82,7 @@ variable "database_name" {
   description = "Name of the application database to create."
   type        = string
   nullable    = false
-  default     = "slm_knowledge"
+  default     = "athena_knowledge"
 }
 
 variable "backup_retention_days" {

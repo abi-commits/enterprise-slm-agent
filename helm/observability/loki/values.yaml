@@ -108,14 +108,14 @@ write:
 
 # ---------------------------------------------------------------------------
 # Azure Blob Storage backend — UNCOMMENT to migrate from filesystem PVC
-# Requires: az storage account create --name stslmprodloki ...
-#           az storage container create --account-name stslmprodloki --name loki-chunks
+# Requires: az storage account create --name stsathenaprodloki ...
+#           az storage container create --account-name stsathenaprodloki --name loki-chunks
 # ---------------------------------------------------------------------------
 # loki:
 #   storage:
 #     type: azure
 #     azure:
-#       accountName: "stslmprodloki"
+#       accountName: "stsathenaprodloki"
 #       userAssignedId: "<loki-workload-identity-client-id>"
 #       # chunks, ruler, and admin containers created separately
 #       container: loki-chunks

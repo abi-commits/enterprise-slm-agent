@@ -131,7 +131,7 @@ async def lifespan(app: FastAPI):
 # Create FastAPI application
 app = FastAPI(
     title="API Service",
-    description="Enterprise SLM-First Knowledge Copilot - Consolidated API Service (Gateway + Auth + Metrics)",
+    description="Athena - Strategic Knowledge Copilot - Consolidated API Service (Gateway + Auth + Metrics)",
     version="1.0.0",
     lifespan=lifespan,
 )

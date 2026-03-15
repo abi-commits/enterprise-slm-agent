@@ -10,7 +10,7 @@ from pathlib import Path
 
 
 class Validator:
-    """System validator for the SLM-First project."""
+    """System validator for the Athena project."""
     
     def __init__(self):
         self.checks_passed = []
@@ -183,7 +183,7 @@ class Validator:
     def run_all_checks(self):
         """Run all validation checks."""
         print("\n" + "=" * 60)
-        print("SLM-First Project Validation")
+        print("Athena Project Validation")
         print("=" * 60 + "\n")
         
         self.check_python_version()

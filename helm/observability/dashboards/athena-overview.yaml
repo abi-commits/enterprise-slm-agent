@@ -1,0 +1,228 @@
+##########################################################################
+# Grafana Dashboard — Athena System Overview
+#
+# Loaded automatically by the Grafana sidecar (label: grafana_dashboard=1).
+# Covers top-level Athena KPIs: request rate, latency, auth, escalation, cost.
+##########################################################################
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-athena-overview
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+  annotations:
+    grafana_folder: "Enterprise Athena"
+data:
+  athena-overview.json: |
+    {
+      "title": "Athena — System Overview",
+      "uid": "athena-overview",
+      "tags": ["athena", "overview", "production"],
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "refresh": "30s",
+      "time": { "from": "now-3h", "to": "now" },
+      "templating": {
+        "list": [
+          {
+            "name": "datasource",
+            "type": "datasource",
+            "query": "prometheus",
+            "current": { "value": "Prometheus" }
+          }
+        ]
+      },
+      "panels": [
+        {
+          "id": 1, "type": "stat", "title": "Request Rate (RPS)",
+          "gridPos": { "x": 0, "y": 0, "w": 4, "h": 4 },
+          "targets": [{
+            "expr": "sum(rate(athena_total_requests[5m]))",
+            "legendFormat": "req/s",
+            "datasource": "${datasource}"
+          }],
+          "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+          "fieldConfig": {
+            "defaults": { "unit": "reqps", "thresholds": {
+              "mode": "absolute",
+              "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 50}, {"color": "red", "value": 200}]
+            }}
+          }
+        },
+        {
+          "id": 2, "type": "stat", "title": "P95 Latency",
+          "gridPos": { "x": 4, "y": 0, "w": 4, "h": 4 },
+          "targets": [{
+            "expr": "histogram_quantile(0.95, sum(rate(athena_query_latency_seconds_bucket[5m])) by (le))",
+            "legendFormat": "P95",
+            "datasource": "${datasource}"
+          }],
+          "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+          "fieldConfig": {
+            "defaults": { "unit": "s", "thresholds": {
+              "mode": "absolute",
+              "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 1}, {"color": "red", "value": 2}]
+            }}
+          }
+        },
+        {
+          "id": 3, "type": "stat", "title": "Auth Failures / min",
+          "gridPos": { "x": 8, "y": 0, "w": 4, "h": 4 },
+          "targets": [{
+            "expr": "sum(rate(athena_auth_failures_total[5m])) * 60",
+            "legendFormat": "failures/min",
+            "datasource": "${datasource}"
+          }],
+          "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+          "fieldConfig": {
+            "defaults": { "unit": "short", "thresholds": {
+              "mode": "absolute",
+              "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 5}, {"color": "red", "value": 30}]
+            }}
+          }
+        },
+        {
+          "id": 4, "type": "stat", "title": "Active Users",
+          "gridPos": { "x": 12, "y": 0, "w": 4, "h": 4 },
+          "targets": [{
+            "expr": "athena_active_users",
+            "legendFormat": "users",
+            "datasource": "${datasource}"
+          }],
+          "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
+          "fieldConfig": { "defaults": { "unit": "short" } }
+        },
+        {
+          "id": 5, "type": "stat", "title": "LLM Escalation Rate",
+          "gridPos": { "x": 16, "y": 0, "w": 4, "h": 4 },
+          "targets": [{
+            "expr": "sum(rate(athena_llm_escalations_total[10m])) / sum(rate(athena_total_requests[10m]))",
+            "legendFormat": "escalation %",
+            "datasource": "${datasource}"
+          }],
+          "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+          "fieldConfig": {
+            "defaults": { "unit": "percentunit", "thresholds": {
+              "mode": "absolute",
+              "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 0.3}, {"color": "red", "value": 0.5}]
+            }}
+          }
+        },
+        {
+          "id": 6, "type": "stat", "title": "Accumulated Cost (USD)",
+          "gridPos": { "x": 20, "y": 0, "w": 4, "h": 4 },
+          "targets": [{
+            "expr": "athena_cost_accumulated_usd",
+            "legendFormat": "USD",
+            "datasource": "${datasource}"
+          }],
+          "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+          "fieldConfig": {
+            "defaults": { "unit": "currencyUSD", "thresholds": {
+              "mode": "absolute",
+              "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 50}, {"color": "red", "value": 100}]
+            }}
+          }
+        },
+        {
+          "id": 10, "type": "timeseries", "title": "Request Rate over Time",
+          "gridPos": { "x": 0, "y": 4, "w": 12, "h": 8 },
+          "targets": [
+            {
+              "expr": "sum(rate(athena_total_requests[5m]))",
+              "legendFormat": "total req/s",
+              "datasource": "${datasource}"
+            }
+          ],
+          "fieldConfig": { "defaults": { "unit": "reqps", "color": { "mode": "palette-classic" } } },
+          "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list" } }
+        },
+        {
+          "id": 11, "type": "timeseries", "title": "Query Latency Percentiles",
+          "gridPos": { "x": 12, "y": 4, "w": 12, "h": 8 },
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.50, sum(rate(athena_query_latency_seconds_bucket[5m])) by (le))",
+              "legendFormat": "P50",
+              "datasource": "${datasource}"
+            },
+            {
+              "expr": "histogram_quantile(0.95, sum(rate(athena_query_latency_seconds_bucket[5m])) by (le))",
+              "legendFormat": "P95",
+              "datasource": "${datasource}"
+            },
+            {
+              "expr": "histogram_quantile(0.99, sum(rate(athena_query_latency_seconds_bucket[5m])) by (le))",
+              "legendFormat": "P99",
+              "datasource": "${datasource}"
+            }
+          ],
+          "fieldConfig": { "defaults": { "unit": "s", "color": { "mode": "palette-classic" } } },
+          "options": {
+            "tooltip": { "mode": "multi" },
+            "thresholds": { "mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 2}] }
+          }
+        },
+        {
+          "id": 12, "type": "timeseries", "title": "Auth Failures over Time",
+          "gridPos": { "x": 0, "y": 12, "w": 8, "h": 7 },
+          "targets": [
+            {
+              "expr": "sum(rate(athena_auth_failures_total[5m])) by (reason) * 60",
+              "legendFormat": "{{ reason }}",
+              "datasource": "${datasource}"
+            }
+          ],
+          "fieldConfig": { "defaults": { "unit": "short", "displayName": "failures/min" } }
+        },
+        {
+          "id": 13, "type": "timeseries", "title": "LLM Escalations over Time",
+          "gridPos": { "x": 8, "y": 12, "w": 8, "h": 7 },
+          "targets": [
+            {
+              "expr": "sum(rate(athena_llm_escalations_total[5m])) by (reason) * 60",
+              "legendFormat": "{{ reason }}",
+              "datasource": "${datasource}"
+            }
+          ],
+          "fieldConfig": { "defaults": { "unit": "short", "displayName": "escalations/min" } }
+        },
+        {
+          "id": 14, "type": "timeseries", "title": "Token Usage (P95) over Time",
+          "gridPos": { "x": 16, "y": 12, "w": 8, "h": 7 },
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.95, sum(rate(athena_token_usage_bucket[5m])) by (le, model_type))",
+              "legendFormat": "P95 tokens ({{ model_type }})",
+              "datasource": "${datasource}"
+            }
+          ],
+          "fieldConfig": { "defaults": { "unit": "short", "displayName": "tokens" } }
+        },
+        {
+          "id": 20, "type": "table", "title": "Service Pod Status",
+          "gridPos": { "x": 0, "y": 19, "w": 24, "h": 7 },
+          "targets": [
+            {
+              "expr": "kube_pod_status_ready{namespace='athena-prod'} == 1",
+              "legendFormat": "{{ pod }}",
+              "instant": true,
+              "datasource": "${datasource}"
+            }
+          ],
+          "transformations": [
+            { "id": "labelsToFields", "options": { "mode": "columns" } },
+            { "id": "filterFieldsByName", "options": { "include": { "names": ["pod", "condition", "Value"] } } }
+          ],
+          "fieldConfig": {
+            "overrides": [
+              { "matcher": { "id": "byName", "options": "Value" },
+                "properties": [{ "id": "custom.displayMode", "value": "color-background" },
+                  { "id": "thresholds", "value": { "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}] } }]
+              }
+            ]
+          }
+        }
+      ]
+    }
