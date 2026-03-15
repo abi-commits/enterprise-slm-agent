@@ -16,7 +16,7 @@ import structlog
 def configure_logging(
     log_level: str = "INFO",
     json_output: bool = True,
-    service_name: str = "slm-service",
+    service_name: str = "athena-service",
 ) -> None:
     """
     Configure structlog for JSON output.

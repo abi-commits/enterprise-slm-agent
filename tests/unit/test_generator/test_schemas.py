@@ -160,7 +160,7 @@ class TestGenerationMethod:
         """Test GenerationMethod enum values."""
         assert GenerationMethod.LLM == "llm"
         assert GenerationMethod.TEMPLATE == "template"
-        assert GenerationMethod.SLM == "slm"
+        assert GenerationMethod.ATHENA == "athena"
 
 
 class TestEscalationReason:

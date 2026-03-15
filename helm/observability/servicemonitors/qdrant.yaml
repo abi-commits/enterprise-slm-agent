@@ -15,13 +15,13 @@ metadata:
   name: qdrant
   namespace: monitoring
   labels:
-    app.kubernetes.io/name: enterprise-slm
+    app.kubernetes.io/name: enterprise-athena
     app.kubernetes.io/component: qdrant
     release: kube-prometheus-stack
 spec:
   namespaceSelector:
     matchNames:
-      - slm-prod
+      - athena-prod
   selector:
     matchLabels:
       app.kubernetes.io/component: qdrant
@@ -34,5 +34,5 @@ spec:
       relabelings:
         - sourceLabels: [__meta_kubernetes_pod_label_app_kubernetes_io_component]
           targetLabel: component
-        - replacement: slm-prod
+        - replacement: athena-prod
           targetLabel: cluster

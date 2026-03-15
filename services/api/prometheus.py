@@ -9,81 +9,81 @@ from prometheus_client import Counter, Gauge, Histogram
 
 # Counters
 total_requests = Counter(
-    "slm_total_requests",
+    "athena_total_requests",
     "Total number of requests processed",
     ["user_id", "branch_taken"],
 )
 
 llm_escalations = Counter(
-    "slm_llm_escalations_total",
+    "athena_llm_escalations_total",
     "Total number of LLM escalations",
     ["user_id", "reason"],
 )
 
 auth_failures = Counter(
-    "slm_auth_failures_total",
+    "athena_auth_failures_total",
     "Total number of authentication failures",
     ["reason"],
 )
 
 # Histograms
 query_latency_seconds = Histogram(
-    "slm_query_latency_seconds",
+    "athena_query_latency_seconds",
     "Query latency in seconds",
     ["service"],
     buckets=(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0),
 )
 
 token_usage = Histogram(
-    "slm_token_usage",
+    "athena_token_usage",
     "Token usage per request",
     ["model_type"],
     buckets=(10, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 25000, 50000),
 )
 
 response_time_ms = Histogram(
-    "slm_response_time_ms",
+    "athena_response_time_ms",
     "Total response time in milliseconds",
     buckets=(10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000),
 )
 
 # Gauges
 active_users = Gauge(
-    "slm_active_users",
+    "athena_active_users",
     "Number of active users in the current window",
 )
 
 cost_accumulated_usd = Gauge(
-    "slm_cost_accumulated_usd",
+    "athena_cost_accumulated_usd",
     "Accumulated cost in USD",
 )
 
 query_confidence = Gauge(
-    "slm_query_confidence",
+    "athena_query_confidence",
     "Current query confidence score",
     ["user_id"],
 )
 
 # Additional metrics for tracking
 escalation_rate = Gauge(
-    "slm_escalation_rate",
+    "athena_escalation_rate",
     "Current escalation rate (percentage)",
 )
 
 avg_latency_per_service = Gauge(
-    "slm_avg_latency_per_service_seconds",
+    "athena_avg_latency_per_service_seconds",
     "Average latency per service in seconds",
     ["service"],
 )
 
 tokens_used_today = Gauge(
-    "slm_tokens_used_today",
+    "athena_tokens_used_today",
     "Total tokens used today",
     ["model_type"],
 )
 
 cost_saved_vs_llm_only = Gauge(
-    "slm_cost_saved_vs_llm_only_usd",
+    "athena_cost_saved_vs_llm_only_usd",
     "Cost saved compared to LLM-only baseline",
 )
 

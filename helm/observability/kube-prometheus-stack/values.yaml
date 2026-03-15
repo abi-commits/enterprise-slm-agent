@@ -66,7 +66,7 @@ prometheus:
 
     # External labels — added to all time series for cross-cluster identification
     externalLabels:
-      cluster: slm-prod
+      cluster: athena-prod
       environment: production
 
     # Additional scrape configs for services not using ServiceMonitors
@@ -135,18 +135,18 @@ alertmanager:
       group_wait: 30s
       group_interval: 5m
       repeat_interval: 12h
-      receiver: "slm-webhook"
+      receiver: "athena-webhook"
       routes:
         # Critical alerts fire immediately
         - matchers:
             - severity =~ "critical"
           group_wait: 0s
           repeat_interval: 1h
-          receiver: "slm-webhook"
+          receiver: "athena-webhook"
         # Warnings batched normally
         - matchers:
             - severity =~ "warning"
-          receiver: "slm-webhook"
+          receiver: "athena-webhook"
         # Watchdog — needed for dead-man's switch monitoring
         - matchers:
             - alertname = "Watchdog"
@@ -155,7 +155,7 @@ alertmanager:
     receivers:
       - name: "null"
 
-      - name: "slm-webhook"
+      - name: "athena-webhook"
         webhook_configs:
           - url_file: /etc/alertmanager/secrets/alert-webhook-url/ALERT_WEBHOOK_URL
             send_resolved: true

@@ -16,7 +16,7 @@ settings = get_settings()
 
 
 class QueryOptimizerModel:
-    """Query optimizer using Qwen-2.5 SLM via vLLM or transformers fallback."""
+    """Query optimizer using Qwen-2.5 Athena model via vLLM or transformers fallback."""
 
     def __init__(self):
         self.model_name = settings.llm_model

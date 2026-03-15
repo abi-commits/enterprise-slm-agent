@@ -93,7 +93,7 @@ class TestUpdateTokenUsage:
         mock_labels.return_value = mock_histogram
         
         prometheus.update_token_usage(
-            model_type="slm",
+            model_type="athena",
             tokens=100,
         )
         
@@ -194,7 +194,7 @@ class TestUpdateTokensUsedToday:
         mock_labels.return_value = mock_gauge
         
         prometheus.update_tokens_used_today(
-            model_type="slm",
+            model_type="athena",
             tokens=5000,
         )
         

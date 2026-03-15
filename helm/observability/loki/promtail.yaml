@@ -27,14 +27,14 @@ config:
           - __meta_kubernetes_pod_label_app_kubernetes_io_instance
         target_label: release
       - action: replace
-        replacement: slm-prod
+        replacement: athena-prod
         target_label: cluster
 
     # Pipeline stages — parse JSON logs from all SLM services
     pipelineStages:
       - cri: {}
       - match:
-          selector: '{app_kubernetes_io_name="enterprise-slm"}'
+          selector: '{app_kubernetes_io_name="enterprise-athena"}'
           stages:
             - json:
                 expressions:

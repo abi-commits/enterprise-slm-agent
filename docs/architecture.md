@@ -1,13 +1,13 @@
-# Enterprise SLM-First Knowledge Copilot
+# Athena - Strategic Knowledge Copilot
 ## Architectural System Design Document
 
 ## 1. Overview
 
-This document describes the system architecture for a multi-user, API-first, SLM-first Enterprise Knowledge Copilot.
+This document describes the system architecture for a multi-user, API-first, AI-first Enterprise Knowledge Copilot.
 
 The system is designed to:
 - Serve enterprise knowledge queries
-- Use Small Language Models (SLMs) as primary routing and processing layers
+- Use Athena models as primary routing and processing layers
 - Escalate to Large Language Models (LLMs) only when necessary
 - Enforce multi-user role-based access control
 - Provide full observability and cost tracking
@@ -22,7 +22,7 @@ The system is designed to:
 ### Functional Goals
 - Multi-user support with RBAC
 - Secure document retrieval
-- Query optimization using SLM
+- Query optimization using Athena
 - Confidence-based routing
 - Optional LLM fallback
 - Audit logging and observability
@@ -46,7 +46,7 @@ API Gateway (Entry Point)
    ↓
 Auth Service (JWT + RBAC)
    ↓
-Query Optimizer Service (SLM - Qwen)
+Query Optimizer Service (Athena - Qwen)
    ↓
 Confidence Check (Threshold ≥ 0.6?)
    ├── No → Request Clarification / Escalate
@@ -56,7 +56,7 @@ Confidence Check (Threshold ≥ 0.6?)
 Search Engine Service
 (Retrieval + Permission Filter + Reranker)
    ↓
-Generator Service (LLM / SLM)
+Generator Service (LLM / Athena)
    ↓
 Response Builder
    ↓
@@ -104,7 +104,7 @@ Client Response
 
 ---
 
-### 4.3 Query Optimizer Service (SLM)
+### 4.3 Query Optimizer Service (Athena)
 
 **Model:** Qwen-2.5 (1.5B or 7B)
 
@@ -259,7 +259,7 @@ Each service has:
 
 ## 11. Architectural Principles
 
-- **SLM-first routing** - Use small models for classification/optimization
+- **AI-first routing** - Use small models for classification/optimization
 - **LLM as escalation, not default** - Minimize LLM usage
 - **Replaceable model services** - Swap models without code changes
 - **Observability-driven AI** - Track all decisions for improvement
@@ -421,7 +421,7 @@ Document Upload → Parser → Chunking → Embedding → Qdrant + RBAC Metadata
 - **Data Validation:** Pydantic V2
 - **Environment Management:** Poetry or uv
 
-### AI & Models (SLM-First)
+### AI & Models
 - **Query Optimizer:** Qwen-2.5 (1.5B or 7B) - served via vLLM
 - **Embeddings:** BAAI/bge-small-en-v1.5 (High performance, low latency)
 - **Reranker:** cross-encoder/ms-marco-MiniLM-L-6-v2
@@ -451,7 +451,7 @@ Document Upload → Parser → Chunking → Embedding → Qdrant + RBAC Metadata
 
 This system demonstrates:
 
-✓ **Heterogeneous model orchestration** - Multiple SLMs + fallback LLM
+✓ **Heterogeneous model orchestration** - Multiple Athena models + fallback LLM
 ✓ **Confidence-based routing** - Intelligent decision on when to escalate
 ✓ **Enterprise-grade RBAC enforcement** - Document-level access control
 ✓ **Cost-aware AI infrastructure** - Minimize LLM token usage

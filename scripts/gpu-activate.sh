@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# gpu-activate.sh — Enterprise SLM GPU Node Pool Activation
+# gpu-activate.sh — Enterprise Athena GPU Node Pool Activation
 #
 # Run this ONCE after the Terraform GPU pool module has been applied.
 # It validates the full GPU stack and then enables vLLM in the Helm chart.
@@ -16,14 +16,14 @@
 #   8.  Smoke-test vLLM /v1/models endpoint
 #
 # Usage:
-#   CLUSTER_NAME=slm-aks-prod RESOURCE_GROUP=rg-slm-prod ./scripts/gpu-activate.sh
+#   CLUSTER_NAME=athena-aks-prod RESOURCE_GROUP=rg-athena-prod ./scripts/gpu-activate.sh
 #
 # Environment variables:
 #   CLUSTER_NAME     AKS cluster name (required)
 #   RESOURCE_GROUP   Azure resource group (required)
 #   GPU_NODE_POOL    Node pool name (default: gpupool)
-#   NAMESPACE        App namespace (default: slm-prod)
-#   HELM_RELEASE     Helm release name (default: enterprise-slm)
+#   NAMESPACE        App namespace (default: athena-prod)
+#   HELM_RELEASE     Helm release name (default: enterprise-athena)
 #   HELM_VALUES      Path to production values file
 #   DRY_RUN          Set to "true" to skip Helm upgrade (default: false)
 # =============================================================================
@@ -32,10 +32,10 @@ set -euo pipefail
 CLUSTER_NAME="${CLUSTER_NAME:?CLUSTER_NAME must be set}"
 RESOURCE_GROUP="${RESOURCE_GROUP:?RESOURCE_GROUP must be set}"
 GPU_NODE_POOL="${GPU_NODE_POOL:-gpupool}"
-NAMESPACE="${NAMESPACE:-slm-prod}"
-HELM_RELEASE="${HELM_RELEASE:-enterprise-slm}"
+NAMESPACE="${NAMESPACE:-athena-prod}"
+HELM_RELEASE="${HELM_RELEASE:-enterprise-athena}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-HELM_DIR="${SCRIPT_DIR}/../helm/enterprise-slm"
+HELM_DIR="${SCRIPT_DIR}/../helm/enterprise-athena"
 HELM_VALUES="${HELM_VALUES:-${HELM_DIR}/values-production.yaml}"
 DRY_RUN="${DRY_RUN:-false}"
 
@@ -84,7 +84,7 @@ READY=$(kubectl get daemonset nvidia-device-plugin \
   -o jsonpath='{.status.numberReady}' 2>/dev/null || echo "0")
 
 if [[ "${DESIRED}" -eq 0 ]]; then
-  die "NVIDIA device plugin DaemonSet not found. Deploy enterprise-slm chart with nvidia.devicePlugin.enabled=true"
+  die "NVIDIA device plugin DaemonSet not found. Deploy enterprise-athena chart with nvidia.devicePlugin.enabled=true"
 fi
 if [[ "${READY}" -ne "${DESIRED}" ]]; then
   die "NVIDIA device plugin: ${READY}/${DESIRED} pods ready. Wait and retry."
@@ -162,7 +162,7 @@ step 6 "Checking NVIDIA RuntimeClass"
 if kubectl get runtimeclass nvidia &>/dev/null; then
   ok "RuntimeClass 'nvidia' exists"
 else
-  die "RuntimeClass 'nvidia' not found. Deploy enterprise-slm chart first (nvidia.devicePlugin.enabled=true)"
+  die "RuntimeClass 'nvidia' not found. Deploy enterprise-athena chart first (nvidia.devicePlugin.enabled=true)"
 fi
 
 # ── Step 7: Enable vLLM via Helm upgrade ──────────────────────────────────

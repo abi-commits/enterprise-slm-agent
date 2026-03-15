@@ -1,0 +1,60 @@
+{{- if and .Values.networkPolicies.enabled .Values.inference.enabled }}
+##########################################################################
+# NetworkPolicy — Inference Service
+#
+# Ingress:
+#   - Port 8000 from api-service (in-cluster)
+#
+# Egress:
+#   - Port 8000 to vllm (in-cluster, when vLLM is enabled)
+#   - Port 443 for HuggingFace model downloads (external, via Azure OIDC policy)
+##########################################################################
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: inference-service-netpol
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "athena.labels" . | nindent 4 }}
+    app.kubernetes.io/component: inference
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: inference
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  policyTypes:
+    - Ingress
+    - Egress
+
+  ingress:
+    # Allow from api-service
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: api
+              app.kubernetes.io/instance: {{ .Release.Name }}
+      ports:
+        - port: 8000
+          protocol: TCP
+    # Allow Prometheus scraping
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - port: 8000
+          protocol: TCP
+
+  egress:
+    {{- if .Values.vllm.enabled }}
+    # → vLLM (in-cluster, GPU pod)
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: vllm
+              app.kubernetes.io/instance: {{ .Release.Name }}
+      ports:
+        - port: 8000
+          protocol: TCP
+    {{- end }}
+{{- end }}

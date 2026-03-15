@@ -30,7 +30,7 @@ variable "environment" {
 }
 
 variable "name_prefix" {
-  description = "Short globally-unique prefix for all resource names (e.g. 'slm-prod'). 3–20 lowercase alphanumeric + hyphens."
+  description = "Short globally-unique prefix for all resource names (e.g. 'athena-prod'). 3–20 lowercase alphanumeric + hyphens."
   type        = string
 
   validation {
@@ -171,7 +171,7 @@ variable "acr_sku" {
 variable "kubernetes_namespace" {
   description = "Kubernetes namespace for application workloads. Used in federated identity credential subject."
   type        = string
-  default     = "slm-prod"
+  default     = "athena-prod"
 }
 
 variable "service_names" {
@@ -208,7 +208,7 @@ variable "postgres_storage_mb" {
 variable "postgres_admin_login" {
   description = "PostgreSQL administrator username."
   type        = string
-  default     = "slm_admin"
+  default     = "athena_admin"
 
   validation {
     condition     = !contains(["admin", "administrator", "root", "guest", "public", "azure_superuser"], var.postgres_admin_login)
@@ -219,7 +219,7 @@ variable "postgres_admin_login" {
 variable "postgres_database_name" {
   description = "Name of the application database to create."
   type        = string
-  default     = "slm_knowledge"
+  default     = "athena_knowledge"
 }
 
 variable "postgres_backup_retention_days" {

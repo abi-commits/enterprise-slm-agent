@@ -1,0 +1,53 @@
+{{- if .Values.qdrant.enabled }}
+##########################################################################
+# Qdrant — Headless Service (for StatefulSet stable network IDs)
+##########################################################################
+apiVersion: v1
+kind: Service
+metadata:
+  name: qdrant-headless
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "athena.labels" . | nindent 4 }}
+    app.kubernetes.io/component: qdrant
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/component: qdrant
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  ports:
+    - name: rest
+      port: {{ .Values.qdrant.service.restPort }}
+      targetPort: rest
+      protocol: TCP
+    - name: grpc
+      port: {{ .Values.qdrant.service.grpcPort }}
+      targetPort: grpc
+      protocol: TCP
+---
+##########################################################################
+# Qdrant — Client Service (stable ClusterIP for application pods)
+##########################################################################
+apiVersion: v1
+kind: Service
+metadata:
+  name: qdrant
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "athena.labels" . | nindent 4 }}
+    app.kubernetes.io/component: qdrant
+spec:
+  type: {{ .Values.qdrant.service.type }}
+  selector:
+    app.kubernetes.io/component: qdrant
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  ports:
+    - name: rest
+      port: {{ .Values.qdrant.service.restPort }}
+      targetPort: rest
+      protocol: TCP
+    - name: grpc
+      port: {{ .Values.qdrant.service.grpcPort }}
+      targetPort: grpc
+      protocol: TCP
+{{- end }}

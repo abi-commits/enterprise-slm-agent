@@ -18,7 +18,7 @@ class MetricRequest(BaseModel):
         ..., ge=0.0, le=1.0, description="Confidence score from optimizer"
     )
     branch_taken: str = Field(
-        ..., description="Branch taken: 'slm' or 'llm'"
+        ..., description="Branch taken: 'athena' or 'llm'"
     )
     escalation_flag: bool = Field(
         ..., description="Whether the request was escalated to LLM"

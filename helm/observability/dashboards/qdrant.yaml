@@ -12,13 +12,13 @@ metadata:
   labels:
     grafana_dashboard: "1"
   annotations:
-    grafana_folder: "Enterprise SLM"
+    grafana_folder: "Enterprise Athena"
 data:
   qdrant.json: |
     {
-      "title": "SLM — Qdrant Vector Database",
-      "uid": "slm-qdrant",
-      "tags": ["slm", "qdrant", "vector-db"],
+      "title": "Athena — Qdrant Vector Database",
+      "uid": "athena-qdrant",
+      "tags": ["athena", "qdrant", "vector-db"],
       "timezone": "browser",
       "schemaVersion": 39,
       "refresh": "30s",
@@ -114,7 +114,7 @@ data:
           "id": 12, "type": "timeseries", "title": "Qdrant Memory Usage",
           "gridPos": { "x": 0, "y": 12, "w": 12, "h": 7 },
           "targets": [{
-            "expr": "container_memory_working_set_bytes{namespace='slm-prod', pod=~'qdrant-.*', container='qdrant'}",
+            "expr": "container_memory_working_set_bytes{namespace='athena-prod', pod=~'qdrant-.*', container='qdrant'}",
             "legendFormat": "{{ pod }}",
             "datasource": "${datasource}"
           }],

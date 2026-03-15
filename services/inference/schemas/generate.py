@@ -62,7 +62,7 @@ class GenerationMethod(str):
 
     LLM = "llm"
     TEMPLATE = "template"
-    SLM = "slm"
+    ATHENA = "athena"
 
 
 class EscalationReason(str):

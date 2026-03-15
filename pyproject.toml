@@ -1,14 +1,14 @@
 [project]
-name = "slm-first"
+name = "athena"
 version = "0.1.0"
-description = "Enterprise SLM-First Knowledge Copilot - A multi-user, API-first, SLM-first Enterprise Knowledge Copilot"
+description = "Athena - Strategic Knowledge Copilot - An enterprise knowledge system that uses SLMs for strategic reasoning before generation."
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}
 authors = [
     {name = "Enterprise Team", email = "team@enterprise.com"}
 ]
-keywords = ["slm", "llm", "knowledge-base", "enterprise", "ai", "copilot"]
+keywords = ["athena", "knowledge-base", "enterprise", "ai", "copilot", "strategy", "reasoning"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -92,7 +92,7 @@ all = [
 ]
 dev = [
     # Full ML stack for local development (mirrors all service deps)
-    "slm-first[all]",
+    "athena[all]",
     # Testing
     "pytest>=8.3.0",
     "pytest-asyncio>=0.25.0",

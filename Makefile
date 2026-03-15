@@ -1,4 +1,4 @@
-# Enterprise SLM-First Knowledge Copilot - Makefile
+# Athena - Strategic Knowledge Copilot - Makefile
 # Consolidated architecture: 3 application services + infrastructure
 
 # Colors
@@ -11,7 +11,7 @@ NC = \033[0m # No Color
 .PHONY: help
 help:
 	@echo ""
-	@echo -e "$(BLUE)Enterprise SLM-First Knowledge Copilot - Makefile$(NC)"
+	@echo -e "$(BLUE)Athena - Strategic Knowledge Copilot - Makefile$(NC)"
 	@echo ""
 	@echo "Usage: make <target>"
 	@echo ""
@@ -204,7 +204,7 @@ shell-inference:
 	docker compose exec inference-service /bin/sh
 
 shell-postgres:
-	docker compose exec postgres psql -U slm_user -d slm_knowledge
+	docker compose exec postgres psql -U athena_user -d athena_knowledge
 
 shell-redis:
 	docker compose exec redis redis-cli
