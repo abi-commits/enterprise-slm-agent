@@ -1,16 +1,16 @@
-{{- if .Values.knowledge.enabled }}
+{{- if .Values.context-engine.enabled }}
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
-  name: knowledge-service
+  name: context-engine-service
   namespace: {{ .Values.global.namespace }}
   labels:
     {{- include "athena.labels" . | nindent 4 }}
-    app.kubernetes.io/component: knowledge
+    app.kubernetes.io/component: context-engine
 spec:
-  minAvailable: {{ .Values.knowledge.pdb.minAvailable }}
+  minAvailable: {{ .Values.context-engine.pdb.minAvailable }}
   selector:
     matchLabels:
-      app.kubernetes.io/component: knowledge
+      app.kubernetes.io/component: context-engine
       app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}

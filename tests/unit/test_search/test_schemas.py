@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from services.knowledge.schemas import (
+from services.context_engine.schemas import (
     SearchRequest,
     Document,
     SearchResponse,

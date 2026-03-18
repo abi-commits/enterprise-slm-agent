@@ -2,7 +2,7 @@
 
 These tests cover schemas that were originally in services.gateway.schemas
 and are now split across services.api.schemas, services.inference.schemas,
-and services.knowledge.schemas.
+and services.context_engine.schemas.
 """
 
 import pytest
@@ -25,7 +25,7 @@ from services.inference.schemas import (
     GenerateRequest,
     GenerateResponse,
 )
-from services.knowledge.schemas import (
+from services.context_engine.schemas import (
     SearchRequest,
     SearchResponse,
 )

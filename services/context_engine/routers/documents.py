@@ -18,10 +18,10 @@ from typing import Any
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
 
-from services.knowledge import schemas as knowledge_schemas
-from services.knowledge.ingestion import chunker, parser
-from services.knowledge.queue import get_queue
-from services.knowledge.retrieval import embeddings, vector_store
+from services.context_engine import schemas as knowledge_schemas
+from services.context_engine.ingestion import chunker, parser
+from services.context_engine.queue import get_queue
+from services.context_engine.retrieval import embeddings, vector_store
 
 logger = logging.getLogger(__name__)
 
@@ -93,7 +93,7 @@ async def process_document_sync(
     Returns:
         Dict with chunks_created and processing_time_ms
     """
-    from services.knowledge.database import calculate_file_hash
+    from services.context_engine.database import calculate_file_hash
 
     start_time = time.time()
 
@@ -537,7 +537,7 @@ async def update_document(
     Returns:
         UploadResponse with updated document info.
     """
-    from services.knowledge.database import (
+    from services.context_engine.database import (
         calculate_file_hash,
         delete_document_chunks,
         get_document_point_ids,
@@ -562,7 +562,7 @@ async def update_document(
         # File content unchanged - just update metadata if provided
         if title or department or access_role:
             async for session in get_session():
-                from services.knowledge.database import update_document_metadata
+                from services.context_engine.database import update_document_metadata
                 await update_document_metadata(
                     session=session,
                     document_id=document_id,
@@ -604,7 +604,7 @@ async def update_document(
                 from qdrant_client.http.models import Filter, HasIdCondition
 
                 from core.config.settings import get_settings
-                from services.knowledge.retrieval.vector_store import get_qdrant_client
+                from services.context_engine.retrieval.vector_store import get_qdrant_client
 
                 settings = get_settings()
                 client = get_qdrant_client()
@@ -720,14 +720,14 @@ async def update_document_metadata_endpoint(
         Updated document info.
     """
     from core.config.settings import get_settings
-    from services.knowledge.database import (
+    from services.context_engine.database import (
         get_document_point_ids,
         get_session,
     )
-    from services.knowledge.database import (
+    from services.context_engine.database import (
         update_document_metadata as db_update_metadata,
     )
-    from services.knowledge.retrieval.vector_store import get_qdrant_client
+    from services.context_engine.retrieval.vector_store import get_qdrant_client
 
     # Check if document exists
     doc_info = await vector_store.get_document_info(document_id)

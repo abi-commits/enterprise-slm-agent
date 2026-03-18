@@ -6,7 +6,7 @@ Combines Gateway + Auth + Metrics into a single service:
 - Metrics: Prometheus metrics and audit logging (IN-PROCESS)
 
 Only two external service dependencies remain:
-- Knowledge Service (port 8001) for document search
+- Context Engine Service (port 8001) for document search
 - Inference Service (port 8002) for query optimization and answer generation
 """
 
@@ -257,28 +257,28 @@ async def health_check_aggregate():
 
     # Check Knowledge Service
     try:
-        knowledge_client = service_clients.get_knowledge_client()
-        response = await knowledge_client.get("/health")
+        context_engine_client = service_clients.get_context_engine_client()
+        response = await context_engine_client.get("/health")
         if response and response.get("status") == "healthy":
-            checks["knowledge_service"] = {
+            checks["context_engine_service"] = {
                 "status": "healthy",
-                "url": knowledge_client.base_url,
-                "circuit_breaker": knowledge_client.circuit_breaker.state.value,
+                "url": context_engine_client.base_url,
+                "circuit_breaker": context_engine_client.circuit_breaker.state.value,
             }
         else:
-            checks["knowledge_service"] = {
+            checks["context_engine_service"] = {
                 "status": "degraded",
-                "url": knowledge_client.base_url,
+                "url": context_engine_client.base_url,
                 "response": response,
-                "circuit_breaker": knowledge_client.circuit_breaker.state.value,
+                "circuit_breaker": context_engine_client.circuit_breaker.state.value,
             }
             overall_status = "degraded"
     except Exception as e:
-        knowledge_client = service_clients.get_knowledge_client()
-        checks["knowledge_service"] = {
+        context_engine_client = service_clients.get_context_engine_client()
+        checks["context_engine_service"] = {
             "status": "unhealthy",
             "error": str(e),
-            "circuit_breaker": knowledge_client.circuit_breaker.state.value,
+            "circuit_breaker": context_engine_client.circuit_breaker.state.value,
         }
         overall_status = "degraded"
 

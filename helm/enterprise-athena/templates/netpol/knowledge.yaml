@@ -1,4 +1,4 @@
-{{- if and .Values.networkPolicies.enabled .Values.knowledge.enabled }}
+{{- if and .Values.networkPolicies.enabled .Values.context-engine.enabled }}
 ##########################################################################
 # NetworkPolicy — Knowledge Service
 #
@@ -14,15 +14,15 @@
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: knowledge-service-netpol
+  name: context-engine-service-netpol
   namespace: {{ .Values.global.namespace }}
   labels:
     {{- include "athena.labels" . | nindent 4 }}
-    app.kubernetes.io/component: knowledge
+    app.kubernetes.io/component: context-engine
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/component: knowledge
+      app.kubernetes.io/component: context-engine
       app.kubernetes.io/instance: {{ .Release.Name }}
   policyTypes:
     - Ingress

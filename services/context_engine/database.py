@@ -98,7 +98,7 @@ async def store_document(
             await session.commit()
             return True
     except Exception as e:
-        from services.knowledge.main import logger
+        from services.context_engine.main import logger
         logger.error(f"Failed to store document: {e}")
         return False
 
@@ -134,7 +134,7 @@ async def get_document_info(document_id: str) -> dict[str, Any] | None:
                 "created_at": doc.created_at.isoformat() if doc.created_at else None,
             }
     except Exception as e:
-        from services.knowledge.main import logger
+        from services.context_engine.main import logger
         logger.error(f"Failed to get document info: {e}")
         return None
 
@@ -169,7 +169,7 @@ async def update_document_status(
                 return True
             return False
     except Exception as e:
-        from services.knowledge.main import logger
+        from services.context_engine.main import logger
         logger.error(f"Failed to update document status: {e}")
         return False
 
@@ -191,7 +191,7 @@ async def delete_document_record(document_id: str) -> bool:
             await session.commit()
             return True
     except Exception as e:
-        from services.knowledge.main import logger
+        from services.context_engine.main import logger
         logger.error(f"Failed to delete document record: {e}")
         return False
 
@@ -240,6 +240,6 @@ async def list_documents(
                 for doc in docs
             ]
     except Exception as e:
-        from services.knowledge.main import logger
+        from services.context_engine.main import logger
         logger.error(f"Failed to list documents: {e}")
         return []

@@ -1,26 +1,26 @@
-{{- if .Values.knowledge.enabled }}
+{{- if .Values.context-engine.enabled }}
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: knowledge-service
+  name: context-engine-service
   namespace: {{ .Values.global.namespace }}
   labels:
     {{- include "athena.labels" . | nindent 4 }}
-    app.kubernetes.io/component: knowledge
+    app.kubernetes.io/component: context-engine
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: knowledge-service
-  minReplicas: {{ .Values.knowledge.hpa.minReplicas }}
-  maxReplicas: {{ .Values.knowledge.hpa.maxReplicas }}
+    name: context-engine-service
+  minReplicas: {{ .Values.context-engine.hpa.minReplicas }}
+  maxReplicas: {{ .Values.context-engine.hpa.maxReplicas }}
   metrics:
     - type: Resource
       resource:
         name: cpu
         target:
           type: Utilization
-          averageUtilization: {{ .Values.knowledge.hpa.targetCPUUtilizationPercentage }}
+          averageUtilization: {{ .Values.context-engine.hpa.targetCPUUtilizationPercentage }}
   behavior:
     scaleDown:
       stabilizationWindowSeconds: 300

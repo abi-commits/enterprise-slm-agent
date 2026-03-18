@@ -43,19 +43,19 @@ spec:
         - alert: AthenaKnowledgeServiceDown
           expr: |
             kube_deployment_status_replicas_available{
-              deployment="knowledge-service",
+              deployment="context-engine-service",
               namespace="athena-prod"
             } == 0
           for: 2m
           labels:
             severity: critical
-            service: knowledge-service
+            service: context-engine-service
             cluster: athena-prod
           annotations:
-            summary: "Knowledge service has zero available replicas"
+            summary: "Context Engine service has zero available replicas"
             description: >-
-              knowledge-service Deployment has 0 available replicas for 2+ minutes.
-              Check: `kubectl describe deployment knowledge-service -n athena-prod`
+              context-engine-service Deployment has 0 available replicas for 2+ minutes.
+              Check: `kubectl describe deployment context-engine-service -n athena-prod`
 
         - alert: AthenaInferenceServiceDown
           expr: |

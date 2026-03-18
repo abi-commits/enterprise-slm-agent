@@ -28,6 +28,12 @@ class GenerateRequest(BaseModel):
         default=None,
         description="Optional conversation history for context",
     )
+    # Context Engineering: optional pre-formatted context from Context Engine service.
+    # If provided, this overrides the normal document-based prompt construction.
+    formatted_context: str | None = Field(
+        default=None,
+        description="Pre-formatted context string from context engineering, including query, instructions, and documents",
+    )
 
 
 class TokenUsage(BaseModel):

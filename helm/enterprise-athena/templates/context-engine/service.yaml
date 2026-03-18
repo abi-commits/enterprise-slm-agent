@@ -1,0 +1,20 @@
+{{- if .Values.context-engine.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: context-engine-service
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "athena.labels" . | nindent 4 }}
+    app.kubernetes.io/component: context-engine
+spec:
+  type: {{ .Values.context-engine.service.type }}
+  selector:
+    app.kubernetes.io/component: context-engine
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  ports:
+    - name: http
+      port: {{ .Values.context-engine.service.port }}
+      targetPort: {{ .Values.context-engine.service.targetPort }}
+      protocol: TCP
+{{- end }}

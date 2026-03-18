@@ -31,7 +31,7 @@ help:
 	@echo "  up-minio            - Start MinIO only"
 	@echo "  up-vllm             - Start vLLM only"
 	@echo "  up-api              - Start API Service only"
-	@echo "  up-knowledge        - Start Knowledge Service only"
+	@echo "  up-context-engine   - Start Context Engine Service only"
 	@echo "  up-inference        - Start Inference Service only"
 	@echo ""
 	@echo "Database:"
@@ -46,7 +46,7 @@ help:
 	@echo ""
 	@echo "Development:"
 	@echo "  shell-api           - Shell into API Service"
-	@echo "  shell-knowledge     - Shell into Knowledge Service"
+	@echo "  shell-context-engine - Shell into Context Engine Service"
 	@echo "  shell-inference     - Shell into Inference Service"
 	@echo "  shell-postgres      - Shell into PostgreSQL"
 	@echo "  shell-redis         - Shell into Redis"
@@ -78,7 +78,7 @@ up:
 	@echo ""
 	@echo -e "$(GREEN)Services started!$(NC)"
 	@echo "API Service:       http://localhost:8000"
-	@echo "Knowledge Service: http://localhost:8001"
+	@echo "Context Engine Service: http://localhost:8001"
 	@echo "Inference Service: http://localhost:8002"
 	@echo "Qdrant:            http://localhost:6333"
 	@echo "PostgreSQL:        localhost:5432"
@@ -129,8 +129,8 @@ up-vllm:
 up-api:
 	docker compose up -d api-service
 
-up-knowledge:
-	docker compose up -d knowledge-service
+up-context-engine:
+	docker compose up -d context-engine-service
 
 up-inference:
 	docker compose up -d inference-service
@@ -139,8 +139,8 @@ up-inference:
 logs-api:
 	docker compose logs -f api-service
 
-logs-knowledge:
-	docker compose logs -f knowledge-service
+logs-context-engine:
+	docker compose logs -f context-engine-service
 
 logs-inference:
 	docker compose logs -f inference-service
@@ -265,7 +265,7 @@ health:
 	@echo "Service Health Status:"
 	@echo "======================="
 	@curl -s http://localhost:8000/health 2>/dev/null && echo " API:        HEALTHY" || echo "API:        UNHEALTHY"
-	@curl -s http://localhost:8001/health 2>/dev/null && echo " Knowledge:  HEALTHY" || echo "Knowledge:  UNHEALTHY"
+	@curl -s http://localhost:8001/health 2>/dev/null && echo " Context:   HEALTHY" || echo "Context:   UNHEALTHY"
 	@curl -s http://localhost:8002/health 2>/dev/null && echo " Inference:  HEALTHY" || echo "Inference:  UNHEALTHY"
 	@curl -s http://localhost:6333/health 2>/dev/null && echo " Qdrant:     HEALTHY" || echo "Qdrant:     UNHEALTHY"
 
