@@ -1,6 +1,6 @@
 """Queue module for async document processing using Redis Streams."""
 
-from services.knowledge.queue.redis_queue import (
+from services.context_engine.queue.redis_queue import (
     IngestionJobStatus,
     IngestionQueue,
     IngestionWorker,

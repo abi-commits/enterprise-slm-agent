@@ -1,8 +1,9 @@
-"""Knowledge Service - Combined FastAPI application (Search + Ingestion).
+"""Context Engine Service - Combined FastAPI application (Search + Ingestion + Context Optimization).
 
-This consolidated service merges the Search Engine and Document Ingestion services,
-sharing a single embedding model instance (BAAI/bge-small-en-v1.5) and Qdrant client
-across both search and ingestion operations.
+This consolidated service merges the Search Engine, Document Ingestion, and Context
+Optimization capabilities. It shares a single embedding model instance (BAAI/bge-small-en-v1.5),
+Qdrant client, and now provides intelligent context engineering to optimize retrieved
+documents for LLM consumption.
 
 Supports both synchronous and asynchronous document ingestion via Redis Streams.
 """
@@ -21,25 +22,26 @@ from core.tracing import (
     instrument_fastapi,
     instrument_http_clients,
 )
-from services.knowledge import schemas as knowledge_schemas
-from services.knowledge.queue import IngestionWorker, get_queue
-from services.knowledge.retrieval import embeddings as embedding_service
-from services.knowledge.retrieval import reranker as reranker_service
-from services.knowledge.retrieval import vector_store as qdrant_service
-from services.knowledge.routers import documents as documents_router
-from services.knowledge.routers import search as search_router
+from services.context_engine import schemas as context_schemas
+from services.context_engine.queue import IngestionWorker, get_queue
+from services.context_engine.retrieval import embeddings as embedding_service
+from services.context_engine.retrieval import reranker as reranker_service
+from services.context_engine.retrieval import vector_store as qdrant_service
+from services.context_engine.routers import documents as documents_router
+from services.context_engine.routers import search as search_router
+from services.context_engine.routers import context as context_router
 
 # Configure structured logging
 settings = get_settings()
 configure_logging(
     log_level=settings.log_level,
     json_output=settings.environment != "development",
-    service_name="knowledge-service",
+    service_name="context-engine-service",
 )
 
 # Configure distributed tracing
 configure_tracing(
-    service_name="knowledge-service",
+    service_name="context-engine-service",
     otlp_endpoint=settings.otel_exporter_otlp_endpoint,
     environment=settings.environment,
     enabled=True,
@@ -58,7 +60,7 @@ async def lifespan(app: FastAPI):
     settings = get_settings()
 
     # Startup
-    logger.info("service_startup", service="knowledge-service")
+    logger.info("service_startup", service="context-engine-service")
 
     # Test Qdrant connection
     logger.info("Testing Qdrant connection...")
@@ -101,19 +103,19 @@ async def lifespan(app: FastAPI):
         _ingestion_worker = IngestionWorker(
             queue=queue,
             process_func=documents_router.process_document_sync,
-            consumer_name=f"knowledge-worker-{settings.knowledge_service_port}",
+            consumer_name=f"context-engine-worker-{settings.context_engine_service_port}",
         )
         await _ingestion_worker.start()
         logger.info("Ingestion worker started")
     except Exception as e:
         logger.warning(f"Failed to connect Redis queue: {e}. Async ingestion disabled.")
 
-    logger.info("Knowledge Service started successfully")
+    logger.info("Context Engine Service started successfully")
 
     yield
 
     # Shutdown
-    logger.info("Shutting down Knowledge Service...")
+    logger.info("Shutting down Context Engine Service...")
 
     # Stop ingestion worker
     if _ingestion_worker:
@@ -131,10 +133,10 @@ async def lifespan(app: FastAPI):
 
 # Create FastAPI application
 app = FastAPI(
-    title="Knowledge Service",
-    description="Consolidated Search + Ingestion service for Enterprise Knowledge Copilot. "
-    "Provides vector search with RBAC and reranking, plus document upload, parsing, "
-    "chunking, embedding, and storage in Qdrant.",
+    title="Context Engine Service",
+    description="Consolidated Search + Ingestion + Context Optimization service for Enterprise Knowledge Copilot. "
+    "Provides vector search with RBAC, reranking, document upload, parsing, chunking, embedding, "
+    "storage in Qdrant, and advanced context engineering for optimal LLM consumption.",
     version="1.0.0",
     lifespan=lifespan,
 )
@@ -187,9 +189,10 @@ async def log_requests(request: Request, call_next):
 # Include routers
 app.include_router(search_router.router)
 app.include_router(documents_router.router)
+app.include_router(context_router.router)
 
 
-@app.get("/health", response_model=knowledge_schemas.HealthResponse)
+@app.get("/health", response_model=context_schemas.HealthResponse)
 async def health_check():
     """Health check endpoint.
 
@@ -218,7 +221,7 @@ async def health_check():
     # Determine overall status
     status_str = "healthy" if (qdrant_connected and embedding_model_loaded and reranker_model_loaded) else "degraded"
 
-    return knowledge_schemas.HealthResponse(
+    return context_schemas.HealthResponse(
         status=status_str,
         qdrant_connected=qdrant_connected,
         embedding_model_loaded=embedding_model_loaded,
@@ -230,7 +233,7 @@ if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run(
-        "services.knowledge.main:app",
+        "services.context_engine.main:app",
         host="0.0.0.0",
         port=8001,
         reload=get_settings().debug,

@@ -1,6 +1,6 @@
-"""Knowledge Service schemas."""
+"""Context Engine Service schemas."""
 
-from services.knowledge.schemas.documents import (
+from services.context_engine.schemas.documents import (
     AsyncUploadResponse,
     BulkUploadItem,
     BulkUploadResponse,
@@ -13,8 +13,14 @@ from services.knowledge.schemas.documents import (
     UploadRequest,
     UploadResponse,
 )
-from services.knowledge.schemas.health import HealthResponse
-from services.knowledge.schemas.search import Document, SearchRequest, SearchResponse
+from services.context_engine.schemas.health import HealthResponse
+from services.context_engine.schemas.search import Document, SearchRequest, SearchResponse
+from services.context_engine.schemas.context import (
+    ContextConfig,
+    ContextMetrics,
+    ContextRequest,
+    ContextResponse,
+)
 
 __all__ = [
     "DeleteRequest",
@@ -32,4 +38,9 @@ __all__ = [
     "JobStatusResponse",
     "BulkUploadItem",
     "BulkUploadResponse",
+    # Context Engineering
+    "ContextConfig",
+    "ContextMetrics",
+    "ContextRequest",
+    "ContextResponse",
 ]

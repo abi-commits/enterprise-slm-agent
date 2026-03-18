@@ -3,7 +3,7 @@
 # NetworkPolicy — Qdrant
 #
 # Ingress:
-#   - REST (6333) + gRPC (6334) from knowledge-service
+#   - REST (6333) + gRPC (6334) from context-engine-service
 #   - REST (6333) + gRPC (6334) from alembic job (for collection creation on init)
 #
 # Egress:
@@ -27,11 +27,11 @@ spec:
     - Egress
 
   ingress:
-    # Allow from knowledge-service
+    # Allow from context-engine-service
     - from:
         - podSelector:
             matchLabels:
-              app.kubernetes.io/component: knowledge
+              app.kubernetes.io/component: context-engine
               app.kubernetes.io/instance: {{ .Release.Name }}
       ports:
         - port: 6333

@@ -3,7 +3,7 @@
 Adapted from services/gateway/routers/query.py with key changes:
 - Token validation is IN-PROCESS via core.security.jwt.verify_token
   (no HTTP call to auth service)
-- Search calls go to knowledge service via service_client
+- Search calls go to context engine service via service_client
 - Generate calls go to inference service via service_client
 - Metrics recording is IN-PROCESS via database.store_metric and
   prometheus functions (no HTTP call to metrics service)
@@ -78,7 +78,7 @@ async def handle_query(
     2. Call Inference Service for query optimization
     3. Check confidence threshold (0.6)
     4. If confidence < 0.6: return clarification request
-    5. If confidence >= 0.6: call Knowledge Service for search
+    5. If confidence >= 0.6: call Context Engine Service for search
     6. Call Inference Service for generation if needed
     7. Return response to client
     8. Record metrics IN-PROCESS (database + Prometheus)
@@ -182,24 +182,29 @@ async def handle_query(
                 },
             )
 
-        # Step 3: Call Knowledge Service for search (check cache first)
+        # Step 3: Call Context Engine Service for search (check cache first)
         search_start = time.time()
-        knowledge_client = service_clients.get_knowledge_client()
+        context_engine_client = service_clients.get_context_engine_client()
 
-        # Try cache first
-        cache_key = f"{':'.join(optimized_queries)}:{current_user.role}"
-        cached_results = await cache.get_search_cache(cache_key, current_user.role)
+        # Context engineering is now enabled
+        context_engineering_enabled = True
 
-        if cached_results:
-            logger.info("Using cached search results")
-            search_results = cached_results
+        # Cache key should account for context engineering flag
+        cache_key = f"{':'.join(optimized_queries)}:{current_user.role}:ce={context_engineering_enabled}"
+        cached_response = await cache.get_search_cache(cache_key, current_user.role)
+
+        if cached_response:
+            logger.info("Using cached search response")
+            search_response = cached_response
         else:
-            search_response = await knowledge_client.post(
+            search_response = await context_engine_client.post(
                 "/search",
                 data={
                     "queries": optimized_queries,
                     "user_role": current_user.role,
                     "top_k": 10,
+                    "context_engineering": context_engineering_enabled,
+                    "keywords": optimize_response.get("keywords", []),
                 },
             )
 
@@ -208,17 +213,19 @@ async def handle_query(
             if search_response is None:
                 raise HTTPException(
                     status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                    detail="Knowledge service unavailable",
+                    detail="Context Engine service unavailable",
                 )
 
-            search_results = search_response.get("results", [])
-
-            # Cache the results
+            # Cache the full response (includes engineered_context)
             await cache.set_search_cache(
                 cache_key,
                 current_user.role,
-                search_results,
+                search_response,
             )
+
+        # Extract results and optional engineered_context
+        search_results = search_response.get("results", [])
+        engineered_context = search_response.get("engineered_context")
 
         # Convert to Source objects
         sources = []
@@ -248,13 +255,19 @@ async def handle_query(
                 confidence = 0.8  # Assume high confidence for cached responses
                 logger.info("Using cached LLM response")
             else:
+                # Prepare data for generate endpoint
+                generate_data = {
+                    "query": request.query,
+                    "context_documents": [s.model_dump() for s in sources],
+                    "user_role": current_user.role,
+                }
+                # If context engineer produced a formatted context, pass it
+                if engineered_context:
+                    generate_data["formatted_context"] = engineered_context
+
                 generate_response = await inference_client.post(
                     "/generate",
-                    data={
-                        "query": request.query,
-                        "context": [s.model_dump() for s in sources],
-                        "user_role": current_user.role,
-                    },
+                    data=generate_data,
                 )
 
                 await track_latency("generator", generator_start, latencies)

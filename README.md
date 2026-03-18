@@ -18,7 +18,7 @@ This system solves these issues by introducing an **Inference-Guided Orchestrati
 ## 3. Solution Overview
 *   **AI-First Orchestration:** Uses a fine-tuned `Qwen2.5-1.5B` (Athena) for query expansion and confidence scoring.
 *   **Tiered Retrieval:** Integrates BGE embeddings with a cross-encoder reranking stage to maximize Precision@K.
-*   **Consolidated Microservices:** A balanced 3-service architecture (API, Knowledge, Inference) that minimizes network overhead while maintaining horizontal scalability.
+*   **Consolidated Microservices:** A balanced 3-service architecture (API, Context Engine, Inference) that minimizes network overhead while maintaining horizontal scalability.
 *   **Production-Grade Security:** Implements advanced JWT patterns including refresh token reuse detection and document-level RBAC.
 
 ## 4. Architecture
@@ -45,11 +45,12 @@ graph TD
         vLLM[vLLM Inference Engine]
     end
 
-    %% Knowledge Service Layer
-    subgraph Knowledge_Service [Knowledge Service :8001]
+    %% Context Engine Service Layer
+    subgraph Context_Engine_Service [Context Engine Service :8001]
         Search[Search Engine]
         Reranker[Cross-Encoder Reranker]
         Ingestion[Document Ingestion]
+        ContextOpt[Context Optimization]
     end
 
     %% Data Layer

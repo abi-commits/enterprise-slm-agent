@@ -27,9 +27,9 @@ class TestAPIServiceIntegration:
     async def test_knowledge_service_imports(self):
         """Test that all knowledge service modules can be imported."""
         try:
-            from services.knowledge import main
-            from services.knowledge.ingestion import parser, chunker
-            from services.knowledge.retrieval import embeddings, vector_store
+            from services.context_engine import main
+            from services.context_engine.ingestion import parser, chunker
+            from services.context_engine.retrieval import embeddings, vector_store
             assert main is not None
             assert parser is not None
             assert chunker is not None
@@ -80,7 +80,7 @@ class TestAPIServiceIntegration:
     @pytest.mark.asyncio
     async def test_document_parser_supported_formats(self):
         """Test that document parser supports required formats."""
-        from services.knowledge.ingestion.parser import DocumentParser
+        from services.context_engine.ingestion.parser import DocumentParser
         
         supported_formats = [
             "test.pdf",
@@ -146,7 +146,7 @@ class TestDocumentFlow:
     @pytest.mark.asyncio
     async def test_document_chunking(self):
         """Test document chunking functionality."""
-        from services.knowledge.ingestion import chunker
+        from services.context_engine.ingestion import chunker
         
         test_text = "This is a test document. " * 100
         chunks = chunker.chunk_text(test_text, chunk_size=512, overlap=50)
@@ -157,7 +157,7 @@ class TestDocumentFlow:
     @pytest.mark.asyncio
     async def test_document_parser_text_extraction(self):
         """Test that document parser can extract text."""
-        from services.knowledge.ingestion.parser import DocumentParser
+        from services.context_engine.ingestion.parser import DocumentParser
         
         # Create a simple test file content
         test_content = b"Test document content for parsing"

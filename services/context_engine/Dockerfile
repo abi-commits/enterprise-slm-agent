@@ -1,4 +1,4 @@
-# Knowledge Service Dockerfile (Search + Ingestion)
+# Context Engine Service Dockerfile (Search + Ingestion + Context Optimization)
 FROM python:3.11-slim
 
 # Set working directory
@@ -15,13 +15,13 @@ RUN pip install uv
 # Copy dependency files
 COPY pyproject.toml ./
 
-# Install knowledge service dependencies (includes sentence-transformers, qdrant, doc parsing)
-RUN uv pip install --system ".[knowledge]"
+# Install context engine service dependencies (includes sentence-transformers, qdrant, doc parsing, context optimization)
+RUN uv pip install --system ".[context-engine]"
 
 # Copy core and service code
 COPY core/ ./core/
 COPY services/__init__.py ./services/__init__.py
-COPY services/knowledge/ ./services/knowledge/
+COPY services/context_engine/ ./services/context_engine/
 
 # Set Python path
 ENV PYTHONPATH=/app:$PYTHONPATH
@@ -37,4 +37,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
 # Run the service (no --reload in production)
-CMD ["sh", "-c", "uvicorn services.knowledge.main:app --host 0.0.0.0 --port 8000 --workers ${UVICORN_WORKERS}"]
+CMD ["sh", "-c", "uvicorn services.context_engine.main:app --host 0.0.0.0 --port 8000 --workers ${UVICORN_WORKERS}"]

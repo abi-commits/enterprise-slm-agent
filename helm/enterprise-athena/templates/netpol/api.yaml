@@ -7,7 +7,7 @@
 #   - Port 9090 (metrics) from monitoring namespace (Prometheus)
 #
 # Egress:
-#   - Port 80 to knowledge-service (in-cluster)
+#   - Port 80 to context-engine-service (in-cluster)
 #   - Port 80 to inference-service (in-cluster)
 #   - Port 6379/6380 to Redis private endpoint (Azure Cache for Redis, TLS)
 ##########################################################################
@@ -47,11 +47,11 @@ spec:
           protocol: TCP
 
   egress:
-    # → knowledge-service (internal)
+    # → context-engine-service (internal)
     - to:
         - podSelector:
             matchLabels:
-              app.kubernetes.io/component: knowledge
+              app.kubernetes.io/component: context-engine
               app.kubernetes.io/instance: {{ .Release.Name }}
       ports:
         - port: 8000

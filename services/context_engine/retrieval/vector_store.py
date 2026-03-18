@@ -309,7 +309,7 @@ async def store_document_chunks(
     Returns:
         True if successful, False otherwise.
     """
-    from services.knowledge.database import (
+    from services.context_engine.database import (
         create_document,
         create_document_chunks,
         get_session,
@@ -410,7 +410,7 @@ async def get_document_info(document_id: str) -> dict[str, Any] | None:
     Returns:
         Document info dict if found, None otherwise.
     """
-    from services.knowledge.database import get_document, get_session
+    from services.context_engine.database import get_document, get_session
 
     async for session in get_session():
         doc = await get_document(session, document_id)
@@ -444,10 +444,10 @@ async def delete_document(
     Returns:
         Number of chunks deleted.
     """
-    from services.knowledge.database import (
+    from services.context_engine.database import (
         delete_document as db_delete_document,
     )
-    from services.knowledge.database import (
+    from services.context_engine.database import (
         get_document_point_ids,
         get_session,
     )
@@ -503,8 +503,8 @@ async def list_documents(
     Returns:
         List of document info dictionaries.
     """
-    from services.knowledge.database import get_session
-    from services.knowledge.database import list_documents as db_list_documents
+    from services.context_engine.database import get_session
+    from services.context_engine.database import list_documents as db_list_documents
 
     async for session in get_session():
         docs = await db_list_documents(

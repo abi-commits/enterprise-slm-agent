@@ -52,13 +52,13 @@ class Settings(BaseSettings):
 
     # Service Ports (Consolidated: 3 services)
     api_service_port: int = Field(default=8000, description="API service port (Gateway + Auth + Metrics)")
-    knowledge_service_port: int = Field(default=8001, description="Knowledge service port (Search + Ingestion)")
+    context_engine_service_port: int = Field(default=8001, description="Context Engine service port (Search + Ingestion + Context Optimization)")
     inference_service_port: int = Field(default=8002, description="Inference service port (Query Optimizer + Generator)")
 
     # Service URLs (Internal - only for inter-service communication)
-    knowledge_service_url: str = Field(
-        default="http://knowledge-service:8000",
-        description="Knowledge service URL (Search + Ingestion)",
+    context_engine_service_url: str = Field(
+        default="http://context-engine-service:8000",
+        description="Context Engine service URL (Search + Ingestion + Context Optimization)",
     )
     inference_service_url: str = Field(
         default="http://inference-service:8000",
@@ -150,6 +150,12 @@ class Settings(BaseSettings):
     cache_llm_response_ttl: int = Field(
         default=86400,
         description="LLM response cache TTL (24 hours)",
+    )
+
+    # Context Engineering
+    max_context_tokens: int = Field(
+        default=4096,
+        description="Maximum tokens for engineered context (for small model)",
     )
 
     # Prometheus Metrics

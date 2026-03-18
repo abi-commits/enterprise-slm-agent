@@ -1,0 +1,47 @@
+{# Default context template for Athena/LLM generation #}
+{# This template presents retrieved documents in a clear, structured format #}
+
+{% if conversation_history %}
+## Previous Conversation
+{% for turn in conversation_history %}
+**User:** {{ turn.query }}
+**Answer:** {{ turn.answer }}
+
+{% endfor %}
+{% endif %}
+
+{% if keywords %}
+## Key Concepts
+{{ keywords | join(', ') }}
+{% endif %}
+
+{% if user_role %}
+## User Context
+Role: {{ user_role }}
+{% endif %}
+
+---
+## Query
+{{ query }}
+
+---
+## Relevant Documents
+{% for doc in documents %}
+### Document {{ loop.index }} (Relevance: {{ "%.2f"|format(doc.score) }})
+{% if doc.metadata %}
+**Source:** {{ doc.metadata.get('title', doc.metadata.get('source', 'Unknown')) }}
+{% if doc.metadata.department %}**Department:** {{ doc.metadata.department }}{% endif %}
+{% endif %}
+{% if doc.truncated %}[Note: This document was truncated for brevity]{% endif %}
+
+{{ doc.content }}
+
+{% endfor %}
+
+---
+## Instructions
+1. Answer based SOLELY on the provided documents
+2. If documents conflict, note the discrepancy
+3. If information is missing, state "I cannot find that information"
+4. Be concise but complete
+5. Cite document numbers when referencing

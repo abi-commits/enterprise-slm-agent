@@ -125,13 +125,21 @@ async def generate_answer(request: GenerateRequest) -> GenerateResponse:
     if request.use_llm:
         # Use LLM for generation
         try:
-            # Build prompt
-            prompt = prompt_utils.build_generation_prompt(
-                question=request.query,
-                documents=request.context_documents,
-                user_role=request.user_role,
-                include_few_shot=False,  # Can be enabled for better results
-            )
+            # Use pre-formatted context if provided, else build from documents
+            if request.formatted_context:
+                # The formatted_context already includes query, documents, instructions
+                # Just send it directly to LLM. Optionally we could append a request for answer.
+                prompt = request.formatted_context
+                # We could add a final instruction to generate answer if not present
+                if not prompt.strip().endswith("Answer:"):
+                    prompt = prompt + "\n\n---\n\nNow, provide a clear answer to the query based on the above information."
+            else:
+                prompt = prompt_utils.build_generation_prompt(
+                    question=request.query,
+                    documents=request.context_documents,
+                    user_role=request.user_role,
+                    include_few_shot=False,  # Can be enabled for better results
+                )
 
             # Get LLM client
             llm = llm_module.get_llm_client()

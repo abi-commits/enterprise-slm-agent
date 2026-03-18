@@ -104,7 +104,7 @@ api:
 
   # Non-secret environment variables only
   env:
-    KNOWLEDGE_SERVICE_URL: "http://knowledge-service.athena-prod.svc.cluster.local"
+    KNOWLEDGE_SERVICE_URL: "http://context-engine-service.athena-prod.svc.cluster.local"
     INFERENCE_SERVICE_URL: "http://inference-service.athena-prod.svc.cluster.local"
     JWT_ALGORITHM: "HS256"
     # Distributed tracing — pushes spans to Tempo via OTLP gRPC
@@ -139,10 +139,10 @@ api:
 # ---------------------------------------------------------------------------
 # Knowledge Service
 # ---------------------------------------------------------------------------
-knowledge:
+context-engine:
   enabled: true
   image:
-    repository: "athena/knowledge-service"
+    repository: "athena/context-engine-service"
   replicaCount: 2
 
   managedIdentity:

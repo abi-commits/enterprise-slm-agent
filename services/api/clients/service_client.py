@@ -1,8 +1,8 @@
-"""HTTP client for calling external Knowledge and Inference services.
+"""HTTP client for calling external Context Engine and Inference services.
 
 Simplified from services/gateway/service_client.py. Only maintains clients for
 the two remaining external service dependencies:
-- Knowledge Service (search, document retrieval)
+- Context Engine Service (search, document retrieval, context optimization)
 - Inference Service (query optimization, answer generation)
 
 Auth and Metrics are now in-process and do not require HTTP clients.
@@ -311,7 +311,7 @@ class ServiceClient:
 class ServiceClientFactory:
     """Factory for creating service clients for external services only.
 
-    Only Knowledge and Inference services require HTTP clients.
+    Only Context Engine and Inference services require HTTP clients.
     Auth and Metrics are now handled in-process within this API service.
     """
 
@@ -319,18 +319,18 @@ class ServiceClientFactory:
         """Initialize the factory."""
         self._clients: dict[str, ServiceClient] = {}
 
-    def get_knowledge_client(self) -> ServiceClient:
-        """Get or create the Knowledge service client."""
-        if "knowledge" not in self._clients:
-            knowledge_url = getattr(
-                settings, "knowledge_service_url", "http://knowledge-service:8000"
+    def get_context_engine_client(self) -> ServiceClient:
+        """Get or create the Context Engine service client."""
+        if "context_engine" not in self._clients:
+            context_engine_url = getattr(
+                settings, "context_engine_service_url", "http://context-engine-service:8000"
             )
-            self._clients["knowledge"] = ServiceClient(
-                base_url=knowledge_url,
-                service_name="knowledge",
+            self._clients["context_engine"] = ServiceClient(
+                base_url=context_engine_url,
+                service_name="context_engine",
                 timeout=15.0,
             )
-        return self._clients["knowledge"]
+        return self._clients["context_engine"]
 
     def get_inference_client(self) -> ServiceClient:
         """Get or create the Inference service client."""

@@ -111,7 +111,7 @@ services:
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:-dev-secret-key-change-in-production}
       - JWT_ALGORITHM=${JWT_ALGORITHM:-HS256}
       - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
-      - KNOWLEDGE_SERVICE_URL=http://knowledge-service:8000
+      - CONTEXT_ENGINE_SERVICE_URL=http://context-engine-service:8000
       - INFERENCE_SERVICE_URL=http://inference-service:8000
       - RATE_LIMIT_REQUESTS=${RATE_LIMIT_REQUESTS:-100}
       - RATE_LIMIT_WINDOW=${RATE_LIMIT_WINDOW:-60}
@@ -125,7 +125,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      knowledge-service:
+      context-engine-service:
         condition: service_healthy
       inference-service:
         condition: service_healthy
@@ -137,11 +137,11 @@ services:
       timeout: 5s
       retries: 3
 
-  knowledge-service:
+  context-engine-service:
     build:
       context: .
-      dockerfile: services/knowledge/Dockerfile
-    container_name: athena-knowledge-service
+      dockerfile: services/context_engine/Dockerfile
+    container_name: athena-context-engine-service
     ports:
       - "${KNOWLEDGE_SERVICE_PORT:-8001}:8000"
     environment:
@@ -154,6 +154,7 @@ services:
       - CHUNK_SIZE=${CHUNK_SIZE:-512}
       - CHUNK_OVERLAP=${CHUNK_OVERLAP:-50}
       - ENVIRONMENT=${ENVIRONMENT:-production}
+      - MAX_CONTEXT_TOKENS=${MAX_CONTEXT_TOKENS:-4096}
     volumes:
       - model_cache:/root/.cache
     depends_on:
